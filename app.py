@@ -32,12 +32,19 @@ if app.config['SECRET_KEY'] == 'your_very_secret_key':
     print("⚠️  WARNING: SECRET_KEY env var not set — using an insecure default. Set SECRET_KEY before deploying to production.")
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 
+if not app.config['SQLALCHEMY_DATABASE_URI']:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set. On Render: open this service's "
+        "Environment tab and set DATABASE_URL to your Postgres instance's Internal Database URL "
+        "(create a Postgres database first if you haven't). Locally: set it in your .env file "
+        "(see .env.example)."
+    )
+
 # Handle PostgreSQL URL format and add SSL for Render
-if app.config['SQLALCHEMY_DATABASE_URI']:
-    if app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgres://"):
-        app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace("postgres://", "postgresql://", 1)
-    if 'sslmode' not in app.config['SQLALCHEMY_DATABASE_URI']:
-        app.config['SQLALCHEMY_DATABASE_URI'] += '?sslmode=require'
+if app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgres://"):
+    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace("postgres://", "postgresql://", 1)
+if 'sslmode' not in app.config['SQLALCHEMY_DATABASE_URI']:
+    app.config['SQLALCHEMY_DATABASE_URI'] += '?sslmode=require'
 
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -278,6 +285,26 @@ def inject_currency():
     except Exception as e:
         print(f"Error loading currency settings: {e}")
         return dict(currency_symbol='KSh', currency_code='KES')
+
+# --- Startup: self-healing schema init ---
+# No Shell access on Render's free tier and no Alembic migrations folder yet,
+# so create any tables that don't exist and seed a default admin. This only
+# creates MISSING tables — it never touches or alters tables that already
+# exist, so it's safe to run on every boot and won't overwrite real data.
+with app.app_context():
+    try:
+        db.create_all()
+        if not User.query.filter_by(username='admin').first():
+            admin_password = os.environ.get('ADMIN_PASSWORD')
+            if not admin_password:
+                admin_password = 'admin123'
+                print("⚠️  ADMIN_PASSWORD env var not set — using insecure default 'admin123'. Set ADMIN_PASSWORD and change the password after first login.")
+            admin_user = User(username='admin', password=admin_password, role='admin')
+            db.session.add(admin_user)
+            db.session.commit()
+            print("✅ Default admin user created.")
+    except Exception as e:
+        print(f"⚠️  Startup schema initialization failed: {e}")
 
 # --- Utility Functions ---
 def generate_qr_code_b64(data):
