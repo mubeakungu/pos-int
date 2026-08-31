@@ -1,0 +1,102 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mx-auto p-4 sm:p-6 lg:p-8">
+    <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 mx-auto max-w-lg">
+        <h2 class="text-2xl font-bold text-gray-800 mb-1">Business Settings</h2>
+        <p class="text-sm text-gray-500 mb-6">Shown on the receipt header and used to generate the M-Pesa payment QR code.</p>
+
+        <form action="{{ url_for('business_settings') }}" method="post" class="space-y-4"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div>
+                <label for="business_name" class="block text-sm font-medium text-gray-700">Business Name</label>
+                <input type="text" id="business_name" name="business_name" value="{{ settings.business_name or '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+            </div>
+            <div>
+                <label for="address" class="block text-sm font-medium text-gray-700">Address</label>
+                <input type="text" id="address" name="address" value="{{ settings.address or '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+            </div>
+            <div>
+                <label for="phone" class="block text-sm font-medium text-gray-700">Phone</label>
+                <input type="text" id="phone" name="phone" value="{{ settings.phone or '' }}" placeholder="+254 7XX XXX XXX" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+            </div>
+
+            <hr class="my-2">
+            <p class="text-sm font-semibold text-gray-700">M-Pesa Payment (choose one)</p>
+
+            <div>
+                <label for="mpesa_till_number" class="block text-sm font-medium text-gray-700">Buy Goods Till Number</label>
+                <input type="text" id="mpesa_till_number" name="mpesa_till_number" value="{{ settings.mpesa_till_number or '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+            </div>
+            <div class="text-center text-xs text-gray-400">— or —</div>
+            <div>
+                <label for="mpesa_paybill_number" class="block text-sm font-medium text-gray-700">Paybill Number</label>
+                <input type="text" id="mpesa_paybill_number" name="mpesa_paybill_number" value="{{ settings.mpesa_paybill_number or '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+            </div>
+            <div>
+                <label for="mpesa_paybill_account" class="block text-sm font-medium text-gray-700">Paybill Account Number</label>
+                <input type="text" id="mpesa_paybill_account" name="mpesa_paybill_account" value="{{ settings.mpesa_paybill_account or '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+            </div>
+            <p class="text-xs text-gray-400">If a Till Number is set, it's used on the receipt QR code ahead of the Paybill.</p>
+
+            <hr class="my-2">
+            <p class="text-sm font-semibold text-gray-700">Currency</p>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label for="currency_code" class="block text-sm font-medium text-gray-700">Currency Code</label>
+                    <input type="text" id="currency_code" name="currency_code" value="{{ settings.currency_code or 'KES' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+                </div>
+                <div>
+                    <label for="currency_symbol" class="block text-sm font-medium text-gray-700">Symbol Shown</label>
+                    <input type="text" id="currency_symbol" name="currency_symbol" value="{{ settings.currency_symbol or 'KSh' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+                </div>
+            </div>
+
+            <p class="text-sm font-semibold text-gray-700 mt-4">Secondary Currency (optional — shown on receipts)</p>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label for="secondary_currency_code" class="block text-sm font-medium text-gray-700">Code</label>
+                    <input type="text" id="secondary_currency_code" name="secondary_currency_code" value="{{ settings.secondary_currency_code or '' }}" placeholder="USD" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+                </div>
+                <div>
+                    <label for="secondary_currency_symbol" class="block text-sm font-medium text-gray-700">Symbol</label>
+                    <input type="text" id="secondary_currency_symbol" name="secondary_currency_symbol" value="{{ settings.secondary_currency_symbol or '' }}" placeholder="$" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
+                </div>
+            </div>
+            <div>
+                <label for="secondary_exchange_rate" class="block text-sm font-medium text-gray-700">Exchange Rate ({{ settings.currency_code or 'KES' }} per 1 unit of secondary)</label>
+                <input type="number" step="0.0001" id="secondary_exchange_rate" name="secondary_exchange_rate" value="{{ settings.secondary_exchange_rate or '' }}" placeholder="e.g. 129 for 1 USD = 129 KES" {% if settings.secondary_rate_auto %}disabled{% endif %} class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2 disabled:bg-gray-100 disabled:text-gray-500">
+            </div>
+
+            <div class="flex items-center gap-2 mt-2">
+                <input type="checkbox" id="secondary_rate_auto" name="secondary_rate_auto" {% if settings.secondary_rate_auto %}checked{% endif %} onchange="document.getElementById('secondary_exchange_rate').disabled = this.checked;" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <label for="secondary_rate_auto" class="text-sm text-gray-700">Use a live exchange rate instead (auto-refreshes at most once an hour when a receipt is viewed)</label>
+            </div>
+
+            {% if settings.secondary_rate_auto %}
+            <p class="text-xs text-gray-500">
+                Last updated: {{ settings.secondary_rate_updated_at.strftime('%Y-%m-%d %H:%M UTC') if settings.secondary_rate_updated_at else 'never yet' }}
+            </p>
+            {% endif %}
+
+            <p class="text-xs text-gray-400">Rates come from open.er-api.com (a free public API) — no live rate lookup happens unless you enable this.</p>
+
+            <hr class="my-2">
+            <p class="text-sm font-semibold text-gray-700">Receipt Email &amp; SMS</p>
+            <p class="text-xs text-gray-400">Configured via environment variables, not here: <code>MAIL_SERVER</code>, <code>MAIL_USERNAME</code>, <code>MAIL_PASSWORD</code>, <code>MAIL_DEFAULT_SENDER</code> for email, and <code>AFRICASTALKING_USERNAME</code>, <code>AFRICASTALKING_API_KEY</code> for SMS. See <code>.env.example</code>.</p>
+
+            <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-full hover:bg-blue-700 transition-colors duration-300 mt-4">
+                Save Settings
+            </button>
+        </form>
+
+        {% if settings.secondary_currency_code %}
+        <form action="{{ url_for('fetch_exchange_rate') }}" method="post" class="mt-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="w-full bg-gray-600 text-white font-semibold py-2 px-4 rounded-full hover:bg-gray-700 transition-colors duration-300">
+                Fetch Live Rate Now
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

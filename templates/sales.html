@@ -1,0 +1,117 @@
+{% extends "layout.html" %}
+
+{% block content %}
+
+<div class="flex flex-col lg:flex-row gap-8"> <!-- Sales Form --> <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 lg:w-1/3"> <h2 class="text-2xl font-bold text-gray-800 mb-4">New Sale</h2>
+
+<form action="{{ url_for('process_sales') }}" method="post" class="mb-6" id="barcode-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="barcode" class="block text-sm font-medium text-gray-700">Scan Barcode</label>
+    <input type="text" id="barcode" name="barcode" autocomplete="off" placeholder="Scan or type barcode, then press Enter" class="mt-1 block w-full rounded-md border-emerald-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 transition-all duration-300 p-2">
+    <p class="text-xs text-gray-400 mt-1">Adds 1 unit straight to the cart. A barcode scanner works like a keyboard here.</p>
+</form>
+<div class="border-t border-gray-200 my-4"></div>
+
+<form action="{{ url_for('process_sales') }}" method="post" class="space-y-4"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> <div> <label for="product_id" class="block text-sm font-medium text-gray-700">Product</label> <select id="product_id" name="product_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2"> {% for id, product in products.items() %} <option value="{{ id }}">{{ product.name }} ({{ currency_symbol }} {{ "%.2f" | format(product.price) }})</option> {% endfor %} </select> </div> <div> <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label> <input type="number" id="quantity" name="quantity" value="1" min="1" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2"> </div> <button type="submit" class="w-full bg-green-600 text-white font-semibold py-2 px-4 rounded-full hover:bg-green-700 transition-colors duration-300"> Add to Cart </button> </form>
+
+<div class="border-t border-gray-200 my-4"></div>
+<button type="button" id="toggle-checkout-extras" class="text-sm text-blue-600 hover:underline mb-2">+ Discount / customer info (optional)</button>
+<div id="checkout-extras" class="hidden space-y-3 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+    <div class="grid grid-cols-2 gap-2">
+        <div>
+            <label for="discount_type" class="block text-xs font-medium text-gray-600">Discount</label>
+            <select id="discount_type" name="discount_type" form="complete-sale-form" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+                <option value="none">None</option>
+                <option value="percent">Percent (%)</option>
+                <option value="fixed">Fixed ({{ currency_symbol }})</option>
+            </select>
+        </div>
+        <div>
+            <label for="discount_value" class="block text-xs font-medium text-gray-600">Value</label>
+            <input type="number" step="0.01" min="0" id="discount_value" name="discount_value" form="complete-sale-form" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+        </div>
+    </div>
+    <div>
+        <label for="discount_reason" class="block text-xs font-medium text-gray-600">Discount Reason</label>
+        <input type="text" id="discount_reason" name="discount_reason" form="complete-sale-form" placeholder="e.g. Loyalty discount" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+    </div>
+    <div class="border-t border-gray-200 pt-2">
+        <label for="customer_name" class="block text-xs font-medium text-gray-600">Customer Name</label>
+        <input type="text" id="customer_name" name="customer_name" form="complete-sale-form" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+        <div>
+            <label for="customer_phone" class="block text-xs font-medium text-gray-600">Phone</label>
+            <input type="tel" id="customer_phone" name="customer_phone" form="complete-sale-form" placeholder="07xx xxx xxx" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+        </div>
+        <div>
+            <label for="customer_email" class="block text-xs font-medium text-gray-600">Email</label>
+            <input type="email" id="customer_email" name="customer_email" form="complete-sale-form" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+        </div>
+    </div>
+    <p class="text-xs text-gray-400">Add a phone/email now to enable one-tap SMS or email receipt delivery later.</p>
+</div>
+
+<div class="mt-4 flex space-x-2"> <form id="complete-sale-form" action="{{ url_for('complete_sale') }}" method="post" class="flex-grow"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-full hover:bg-blue-700 transition-colors duration-300"> Complete Sale </button> </form> <form action="{{ url_for('cancel_sale') }}" method="post" class="flex-grow"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> <button type="submit" class="w-full bg-gray-400 text-white font-semibold py-2 px-4 rounded-full hover:bg-gray-500 transition-colors duration-300"> Cancel Sale </button> </form> </div> </div>
+
+<!-- Current Transaction -->
+<div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 lg:w-2/3">
+    <h2 class="text-2xl font-bold text-gray-800 mb-4">Current Transaction</h2>
+    <div class="overflow-x-auto mb-4">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subtotal</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for item in transaction %}
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ item.name }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ item.quantity }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ currency_symbol }} {{ "%.2f" | format(item.price) }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{{ currency_symbol }} {{ "%.2f" | format(item.subtotal) }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <form action="{{ url_for('remove_item_from_sale', item_id=item.id) }}" method="post" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-semibold hover:bg-red-600 transition-colors duration-300">
+                                Remove
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="text-right text-2xl font-bold text-gray-800 border-t-2 border-gray-300 pt-4">
+        Total: {{ currency_symbol }} {{ "%.2f" | format(total) }}
+    </div>
+</div>
+
+</div>
+
+<script>
+    // Keep the cursor in the barcode field so a scanner (acting as a keyboard) can fire repeatedly.
+    document.addEventListener('DOMContentLoaded', function () {
+        var barcodeInput = document.getElementById('barcode');
+        if (barcodeInput) {
+            barcodeInput.focus();
+        }
+
+        var toggleBtn = document.getElementById('toggle-checkout-extras');
+        var extras = document.getElementById('checkout-extras');
+        if (toggleBtn && extras) {
+            toggleBtn.addEventListener('click', function () {
+                extras.classList.toggle('hidden');
+                toggleBtn.textContent = extras.classList.contains('hidden')
+                    ? '+ Discount / customer info (optional)'
+                    : '\u2212 Hide discount / customer info';
+            });
+        }
+    });
+</script>
+
+{% endblock %}

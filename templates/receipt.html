@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt #{{ sale.id }}</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            color: #000;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.4;
+            background: #f3f4f6;
+        }
+        .container {
+            width: 300px;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background: #fff;
+        }
+        .header, .footer {
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        .header p {
+            margin: 0;
+        }
+        .receipt-info {
+            margin-top: 15px;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            padding: 5px 0;
+        }
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .items-table th, .items-table td {
+            text-align: left;
+            padding: 3px 0;
+            border-bottom: 1px dashed #eee;
+        }
+        .items-table th:nth-child(2), .items-table td:nth-child(2),
+        .items-table th:nth-child(3), .items-table td:nth-child(3) {
+            text-align: right;
+        }
+        .totals {
+            margin-top: 10px;
+            text-align: right;
+            font-size: 14px;
+        }
+        .total-row {
+            font-weight: bold;
+        }
+        .kra-info, .payment-info {
+            margin-top: 15px;
+            text-align: center;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+        }
+        .qr-code {
+            display: block;
+            margin: 10px auto;
+            width: 100px;
+        }
+        .print-bar {
+            width: 300px;
+            margin: 0 auto 10px auto;
+            text-align: center;
+        }
+        .print-bar button {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .print-bar button:hover {
+            background: #1d4ed8;
+        }
+        .print-bar a {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #4b5563;
+            margin-left: 12px;
+            text-decoration: underline;
+        }
+        .refunded-banner {
+            background: #fee2e2;
+            color: #991b1b;
+            text-align: center;
+            font-weight: bold;
+            padding: 6px;
+            margin-bottom: 10px;
+            border: 1px dashed #991b1b;
+        }
+        .discount-row {
+            color: #b45309;
+        }
+        .secondary-total {
+            font-size: 11px;
+            font-weight: normal;
+            color: #555;
+        }
+        .delivery-bar {
+            width: 300px;
+            margin: 10px auto 0 auto;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+        .delivery-bar form {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        .delivery-bar input[type="email"], .delivery-bar input[type="tel"], .delivery-bar input[type="text"] {
+            flex-grow: 1;
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .delivery-bar button {
+            background: #4b5563;
+            color: #fff;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .delivery-bar button:hover {
+            background: #374151;
+        }
+        .refund-form {
+            margin-top: 10px;
+            text-align: center;
+        }
+        .refund-form input[type="text"] {
+            width: 200px;
+            padding: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 6px;
+        }
+        .refund-form button {
+            background: #dc2626;
+            color: #fff;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .refund-form button:hover {
+            background: #b91c1c;
+        }
+        .flash-messages {
+            width: 300px;
+            margin: 0 auto 10px auto;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+        .flash-messages .flash {
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+        }
+        .flash-messages .flash.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+        .flash-messages .flash.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+        @media print {
+            .flash-messages {
+                display: none;
+            }
+        }
+
+        /* Print / thermal-printer friendly output */
+        @media print {
+            body {
+                background: #fff;
+                padding: 0;
+            }
+            .print-bar, .delivery-bar, .refund-form {
+                display: none;
+            }
+            .container {
+                width: 80mm;
+                border: none;
+                padding: 0;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-bar">
+        <button onclick="window.print()">🖨️ Print Receipt</button>
+        <a href="{{ url_for('sales_history') }}">Back to History</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="flash {{ 'error' if category == 'error' else 'success' }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        {% if sale.refunded %}
+        <div class="refunded-banner">
+            REFUNDED{% if sale.refunded_at %} on {{ sale.refunded_at.strftime('%Y-%m-%d') }}{% endif %}
+            {% if sale.refund_reason %}<br>({{ sale.refund_reason }}){% endif %}
+        </div>
+        {% endif %}
+
+        <div class="header">
+            <h1>{{ settings.business_name or 'Your Business Name' }}</h1>
+            {% if settings.address %}<p>{{ settings.address }}</p>{% endif %}
+            {% if settings.phone %}<p>Tel: {{ settings.phone }}</p>{% endif %}
+        </div>
+
+        <div class="receipt-info">
+            <p><strong>Receipt #:</strong> {{ sale.id }}</p>
+            <p><strong>Date:</strong> {{ sale.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+            <p><strong>Clerk:</strong> {{ clerk_username }}</p>
+            {% if sale.customer_name %}<p><strong>Customer:</strong> {{ sale.customer_name }}</p>{% endif %}
+        </div>
+
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>{{ currency_symbol }} {{ "%.2f"|format(item.price) }}</td>
+                    <td>{{ currency_symbol }} {{ "%.2f"|format(item.subtotal) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="totals">
+            {% if sale.discount_amount %}
+            <p>Subtotal: {{ currency_symbol }} {{ "%.2f"|format(sale.subtotal) }}</p>
+            <p class="discount-row">Discount{% if sale.discount_reason %} ({{ sale.discount_reason }}){% endif %}: -{{ currency_symbol }} {{ "%.2f"|format(sale.discount_amount) }}</p>
+            {% endif %}
+            <p class="total-row">Total: {{ currency_symbol }} {{ "%.2f"|format(sale.total_amount) }}</p>
+            {% if secondary_amount is not none %}
+            <p class="secondary-total">≈ {{ settings.secondary_currency_symbol }} {{ "%.2f"|format(secondary_amount) }}{% if settings.secondary_rate_auto %} (live rate{% if settings.secondary_rate_updated_at %}, {{ settings.secondary_rate_updated_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}){% endif %}</p>
+            {% endif %}
+        </div>
+
+        {% if payment_qr_b64 %}
+        <div class="payment-info">
+            <p>Pay via M-Pesa:</p>
+            {% if settings.mpesa_till_number %}
+                <p><strong>Buy Goods Till: {{ settings.mpesa_till_number }}</strong></p>
+            {% elif settings.mpesa_paybill_number %}
+                <p><strong>Paybill: {{ settings.mpesa_paybill_number }}</strong></p>
+                {% if settings.mpesa_paybill_account %}<p>Account: {{ settings.mpesa_paybill_account }}</p>{% endif %}
+            {% endif %}
+            <img src="data:image/png;base64,{{ payment_qr_b64 }}" alt="M-Pesa Payment QR Code" class="qr-code">
+        </div>
+        {% endif %}
+
+        <div class="kra-info">
+            <p>KRA Control Unit Invoice ID:</p>
+            <p><strong>{{ kra_invoice_id }}</strong></p>
+            <p>Thank you for your purchase!</p>
+            {% if qr_code_b64 %}
+                <img src="data:image/png;base64,{{ qr_code_b64 }}" alt="KRA QR Code" class="qr-code">
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="delivery-bar">
+        <form action="{{ url_for('email_receipt', sale_id=sale.id) }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="email" name="email" placeholder="Email address" value="{{ sale.customer_email or '' }}">
+            <button type="submit">Email Receipt</button>
+        </form>
+        <form action="{{ url_for('sms_receipt', sale_id=sale.id) }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="tel" name="phone" placeholder="Phone number" value="{{ sale.customer_phone or '' }}">
+            <button type="submit">Text Receipt</button>
+        </form>
+    </div>
+
+    {% if current_user.is_authenticated and current_user.is_admin and not sale.refunded %}
+    <div class="refund-form">
+        <form action="{{ url_for('refund_sale', sale_id=sale.id) }}" method="post" onsubmit="return confirm('Refund this sale? Items will be restocked.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div><input type="text" name="refund_reason" placeholder="Refund reason (optional)"></div>
+            <button type="submit">Refund Sale</button>
+        </form>
+    </div>
+    {% endif %}
+</body>
+</html>

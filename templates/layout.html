@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title | default('Simple POS') }}</title>
+    <!-- Use the correct Tailwind CSS CDN link -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            @apply bg-gray-100;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+    <!-- Header/Navigation Bar -->
+    <nav class="bg-white shadow-md p-4 sticky top-0 z-50">
+        <div class="container mx-auto flex flex-col md:flex-row justify-between items-center">
+            <!-- App Name/Logo -->
+            <a href="/" class="text-3xl font-bold text-gray-800 rounded-lg hover:text-blue-600 transition-colors duration-300 mb-4 md:mb-0">Simple POS</a>
+
+            <!-- Navigation Links -->
+            <div class="flex flex-wrap justify-center md:space-x-4 space-x-2">
+                {% if current_user.is_authenticated %}
+                <a href="/" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Dashboard</a>
+                {% if current_user.is_admin %}
+                <a href="/products" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Products</a>
+                {% endif %}
+                <a href="/sales" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Sales</a>
+                <a href="/history" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Sales History</a>
+                <a href="/reports" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Reports</a>
+                {% if current_user.is_admin %}
+                <a href="/users" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Users</a>
+                <a href="/settings" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Settings</a>
+                {% endif %}
+                <a href="/logout" class="text-gray-600 hover:text-red-600 transition-colors duration-300 p-2 rounded-lg font-medium">Logout</a>
+                {% else %}
+                <a href="/login" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Login</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="container mx-auto p-8 flex-grow">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-4">
+            {% for category, message in messages %}
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative" role="alert">
+                <span class="block sm:inline">{{ message }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white text-center p-6 mt-auto">
+        <p class="text-sm">&copy; 2024 Simple POS. All rights reserved.</p>
+    </footer>
+</body>
+</html>

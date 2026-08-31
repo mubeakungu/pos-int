@@ -1,0 +1,16 @@
+Flask
+Flask-Login
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-WTF
+Flask-Mail
+africastalking
+requests
+Werkzeug
+psycopg2-binary
+python-dotenv
+gunicorn
+cloudinary
+qrcode
+python-barcode
+Pillow
