@@ -2729,7 +2729,7 @@ def issue_invoice(doc_id):
     items = []
     for line in doc.lines:
         product = Product.query.get(line['product_id']) if line.get('product_id') else None
-        qty = line['quantity']
+        qty = int(line['quantity']) if float(line['quantity']).is_integer() else line['quantity']
         if product is not None:
             if product.quantity < qty:
                 flash(f'Not enough stock for {product.name}: {product.quantity} left, {qty:g} on the invoice.', 'error')
