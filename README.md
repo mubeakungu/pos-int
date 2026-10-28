@@ -2,6 +2,10 @@
 
 A Flask point-of-sale for Kenyan shops: products and stock, barcode checkout, discounts, receipts with QR codes, refunds, reports, users, and a pluggable integration layer for KRA eTIMS, M-Pesa and any other API.
 
+## Deploying (Render)
+
+Click **New > Blueprint** on [Render](https://dashboard.render.com), pick this repo, and enter an admin password when asked. `render.yaml` creates the app and a Postgres database. Once it's live, set `PUBLIC_BASE_URL` to the app's address so M-Pesa callbacks can reach it. Log in as `admin` with the password you chose.
+
 ## Running locally
 
 ```bash
