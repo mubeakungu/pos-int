@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="flex flex-col lg:flex-row gap-8">
+    <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200 lg:w-1/3">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">{{ 'Edit' if edit else 'Add' }} Supplier</h2>
+        <form method="post" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if edit %}<input type="hidden" name="supplier_id" value="{{ edit.id }}">{% endif %}
+            {% with obj=edit, with_credit=False %}{% include "_contact_fields.html" %}{% endwith %}
+            <button class="w-full bg-blue-600 text-white font-semibold py-2 rounded-full hover:bg-blue-700">Save supplier</button>
+            {% if edit %}<a href="{{ url_for('list_suppliers') }}" class="block text-center text-sm text-gray-500 hover:underline">Cancel</a>{% endif %}
+        </form>
+    </div>
+    <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200 lg:w-2/3">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-gray-800">Suppliers</h2>
+            <a href="{{ url_for('list_purchase_orders') }}" class="text-sm text-blue-600 hover:underline">Purchase orders &rarr;</a>
+        </div>
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs text-gray-500 uppercase">Name</th><th class="px-4 py-3 text-left text-xs text-gray-500 uppercase">Phone</th><th class="px-4 py-3 text-left text-xs text-gray-500 uppercase">Email</th><th class="px-4 py-3 text-right text-xs text-gray-500 uppercase">Orders</th><th></th></tr></thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for s in suppliers %}
+                <tr><td class="px-4 py-3 font-semibold">{{ s.name }}</td><td class="px-4 py-3">{{ s.phone or '' }}</td><td class="px-4 py-3">{{ s.email or '' }}</td><td class="px-4 py-3 text-right">{{ s.purchase_orders|length }}</td>
+                    <td class="px-4 py-3 text-right"><a href="{{ url_for('list_suppliers', edit=s.id) }}" class="text-blue-600 hover:underline">Edit</a></td></tr>
+                {% else %}<tr><td colspan="5" class="px-4 py-10 text-center text-gray-400">No suppliers yet.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -28,7 +28,7 @@ BASE_URLS = {
 TAX_RATES = {'A': 0.0, 'B': 16.0, 'C': 0.0, 'D': 0.0, 'E': 8.0}
 
 # eTIMS payment type codes
-PAYMENT_TYPES = {'cash': '01', 'credit': '02', 'card': '05', 'mpesa': '06', 'mobile': '06'}
+PAYMENT_TYPES = {'cash': '01', 'credit': '02', 'card': '05', 'mpesa': '06', 'mobile': '06', 'split': '07'}
 
 
 def _eat_now():

@@ -1,0 +1,55 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-200 max-w-4xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-800 mb-4">New Purchase Order</h2>
+    {% if not suppliers %}<div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">Add a supplier first: <a href="{{ url_for('list_suppliers') }}" class="text-blue-600 underline">Suppliers</a>.</div>{% endif %}
+    <form method="post" class="space-y-4" id="po-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-700">Supplier</label>
+                <select name="supplier_id" required class="mt-1 block w-full rounded-md border border-gray-300 p-2">{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div>
+            <div><label class="block text-sm font-medium text-gray-700">Expected delivery</label><input type="date" name="expected_on" class="mt-1 block w-full rounded-md border border-gray-300 p-2"></div>
+        </div>
+        <table class="min-w-full text-sm">
+            <thead class="bg-gray-50"><tr><th class="p-2 text-left text-xs text-gray-500 uppercase">Product</th><th class="p-2 text-left text-xs text-gray-500 uppercase w-24">In stock</th><th class="p-2 text-left text-xs text-gray-500 uppercase w-24">Qty</th><th class="p-2 text-left text-xs text-gray-500 uppercase w-32">Unit cost</th><th></th></tr></thead>
+            <tbody id="po-lines">
+                {% set rows = prefill if prefill else [none] %}
+                {% for pid in rows %}
+                <tr class="po-row">
+                    <td class="p-1"><select name="line_product_id" class="po-product w-full rounded-md border border-gray-300 p-2"><option value="">Choose…</option>{% for p in products %}<option value="{{ p.id }}" data-stock="{{ p.quantity }}" data-cost="{{ p.cost_price if p.cost_price is not none else '' }}" data-reorder="{{ p.reorder_level }}" {% if pid == p.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></td>
+                    <td class="p-1 po-stock text-gray-500"></td>
+                    <td class="p-1"><input type="number" min="1" name="line_quantity" class="po-qty w-24 rounded-md border border-gray-300 p-2" value="1"></td>
+                    <td class="p-1"><input type="number" step="0.01" min="0" name="line_unit_cost" class="po-cost w-32 rounded-md border border-gray-300 p-2"></td>
+                    <td class="p-1"><button type="button" class="po-remove text-red-500 text-lg px-2">&times;</button></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="button" id="po-add" class="text-sm text-blue-600 hover:underline">+ Add product</button>
+        <div><label class="block text-sm font-medium text-gray-700">Notes</label><textarea name="notes" rows="2" class="mt-1 block w-full rounded-md border border-gray-300 p-2"></textarea></div>
+        <button class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-full hover:bg-blue-700">Create order</button>
+    </form>
+</div>
+<script>
+(function () {
+    var body = document.getElementById('po-lines');
+    function fill(row, setQty) {
+        var opt = row.querySelector('.po-product').selectedOptions[0];
+        row.querySelector('.po-stock').textContent = opt && opt.dataset.stock !== undefined ? opt.dataset.stock : '';
+        if (opt && opt.dataset.cost && !row.querySelector('.po-cost').value) row.querySelector('.po-cost').value = opt.dataset.cost;
+        if (setQty && opt && opt.dataset.reorder) row.querySelector('.po-qty').value = Math.max(parseInt(opt.dataset.reorder) * 2 - parseInt(opt.dataset.stock), 1);
+    }
+    function wire(row) {
+        row.querySelector('.po-product').addEventListener('change', function () { row.querySelector('.po-cost').value = ''; fill(row, false); });
+        row.querySelector('.po-remove').addEventListener('click', function () { if (body.children.length > 1) row.remove(); });
+        fill(row, true);
+    }
+    Array.from(body.children).forEach(wire);
+    document.getElementById('po-add').addEventListener('click', function () {
+        var c = body.children[0].cloneNode(true);
+        c.querySelector('.po-product').selectedIndex = 0; c.querySelector('.po-cost').value = ''; c.querySelector('.po-qty').value = 1;
+        body.appendChild(c); wire(c);
+    });
+})();
+</script>
+{% endblock %}

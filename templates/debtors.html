@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-200">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-2xl font-bold text-gray-800">Debtors (unpaid invoices)</h2>
+        <button onclick="window.print()" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-semibold">Print</button>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50"><tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Current</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">1-30</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">31-60</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">61-90</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">90+</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+            </tr></thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for r in rows %}
+                <tr>
+                    <td class="px-4 py-3">{% if r.customer %}<a class="text-blue-700 font-semibold hover:underline" href="{{ url_for('customer_statement', customer_id=r.customer.id) }}">{{ r.customer.name }}</a>{% else %}Walk-in{% endif %}
+                        <div class="text-xs text-gray-400">{% for i in r.invoices %}<a href="{{ url_for('view_document', doc_id=i.id) }}" class="hover:underline">{{ i.number }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div></td>
+                    {% for k in ['current', '1-30', '31-60', '61-90', '90+'] %}<td class="px-4 py-3 text-right {{ 'text-red-600' if k != 'current' and r.aging[k] else '' }}">{{ '{:,.2f}'.format(r.aging[k]) if r.aging[k] else '-' }}</td>{% endfor %}
+                    <td class="px-4 py-3 text-right font-bold">{{ '{:,.2f}'.format(r.total) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="px-4 py-10 text-center text-gray-400">Nobody owes you anything.</td></tr>
+                {% endfor %}
+            </tbody>
+            {% if rows %}<tfoot class="bg-gray-50 font-bold"><tr><td class="px-4 py-3">Total</td>{% for k in ['current', '1-30', '31-60', '61-90', '90+'] %}<td class="px-4 py-3 text-right">{{ '{:,.2f}'.format(totals[k]) }}</td>{% endfor %}<td class="px-4 py-3 text-right">{{ currency_symbol }} {{ '{:,.2f}'.format(grand_total) }}</td></tr></tfoot>{% endif %}
+        </table>
+    </div>
+</div>
+{% endblock %}

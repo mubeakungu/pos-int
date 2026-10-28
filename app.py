@@ -111,6 +111,9 @@ class Product(db.Model):
     price = db.Column(db.Float, nullable=False)
     quantity = db.Column(db.Integer, default=0)
     reorder_level = db.Column(db.Integer, default=5, nullable=False)
+    category = db.Column(db.String(60), nullable=True)
+    tax_type = db.Column(db.String(1), nullable=True, default='B')  # eTIMS tax type: A exempt, B 16%, C zero, D non-VAT, E 8%
+    cost_price = db.Column(db.Float, nullable=True)
     barcode = db.Column(db.String(64), unique=True, nullable=True)
     image_url = db.Column(db.String(255), nullable=True)
     public_id = db.Column(db.String(255), nullable=True)
@@ -182,6 +185,13 @@ class BusinessSettings(db.Model):
     secondary_exchange_rate = db.Column(db.Float, nullable=True)  # units of primary currency per 1 unit of secondary
     secondary_rate_auto = db.Column(db.Boolean, nullable=False, default=False)
     secondary_rate_updated_at = db.Column(db.DateTime, nullable=True)
+    # Shown on quotations / invoices
+    kra_pin = db.Column(db.String(20), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    bank_details = db.Column(db.Text, nullable=True)
+    invoice_terms = db.Column(db.Text, nullable=True)
+    quotation_valid_days = db.Column(db.Integer, nullable=True)
+    invoice_due_days = db.Column(db.Integer, nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     @classmethod
@@ -345,8 +355,239 @@ class SaleMeta(db.Model):
     fiscal_provider = db.Column(db.String(60), nullable=True)
     fiscal_signature = db.Column(db.String(255), nullable=True)
     fiscal_json = db.Column(db.Text, nullable=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=True)
+    shift_id = db.Column(db.Integer, db.ForeignKey('shifts.id'), nullable=True)
+    document_id = db.Column(db.Integer, nullable=True)  # set when the sale fulfils an invoice
 
     sale = db.relationship('Sale', backref=db.backref('meta', uselist=False))
+    customer = db.relationship('Customer')
+
+
+# --- Business Models: customers, shifts, documents, suppliers ---
+TAX_TYPES = [('B', 'VAT 16%'), ('E', 'VAT 8%'), ('A', 'Exempt'), ('C', 'Zero-rated'), ('D', 'Non-VAT')]
+TAX_RATES = {'A': 0.0, 'B': 16.0, 'C': 0.0, 'D': 0.0, 'E': 8.0}
+
+
+class Customer(db.Model):
+    __tablename__ = 'customers'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    phone = db.Column(db.String(30), nullable=True, index=True)
+    email = db.Column(db.String(120), nullable=True)
+    kra_pin = db.Column(db.String(20), nullable=True)
+    address = db.Column(db.String(255), nullable=True)
+    credit_limit = db.Column(db.Float, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+
+class Shift(db.Model):
+    """A cashier's session at the till, from opening float to cash-up."""
+    __tablename__ = 'shifts'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    opened_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+    opening_float = db.Column(db.Float, nullable=False, default=0.0)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    counted_cash = db.Column(db.Float, nullable=True)
+    expected_cash = db.Column(db.Float, nullable=True)
+    notes = db.Column(db.String(255), nullable=True)
+
+    user = db.relationship('User')
+
+    @property
+    def is_open(self):
+        return self.closed_at is None
+
+
+class Document(db.Model):
+    """Quotations, proforma invoices and invoices share one table and numbering per type."""
+    __tablename__ = 'documents'
+    id = db.Column(db.Integer, primary_key=True)
+    doc_type = db.Column(db.String(20), nullable=False, index=True)  # quotation | proforma | invoice
+    number = db.Column(db.String(30), nullable=False, unique=True)
+    status = db.Column(db.String(20), nullable=False, default='draft')
+    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=True)
+    issue_date = db.Column(db.Date, nullable=False, default=datetime.date.today)
+    valid_until = db.Column(db.Date, nullable=True)  # quotations / proformas
+    due_date = db.Column(db.Date, nullable=True)     # invoices
+    lines_json = db.Column(db.Text, nullable=False, default='[]')
+    discount_amount = db.Column(db.Float, nullable=False, default=0.0)
+    notes = db.Column(db.Text, nullable=True)
+    terms = db.Column(db.Text, nullable=True)
+    source_id = db.Column(db.Integer, db.ForeignKey('documents.id'), nullable=True)  # converted from
+    sale_id = db.Column(db.Integer, db.ForeignKey('sales.id'), nullable=True)  # stock/eTIMS record for an issued invoice
+    created_by = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    customer = db.relationship('Customer', backref=db.backref('documents', lazy=True))
+    source = db.relationship('Document', remote_side=[id])
+    sale = db.relationship('Sale')
+
+    LABELS = {'quotation': 'Quotation', 'proforma': 'Proforma Invoice', 'invoice': 'Invoice'}
+    PREFIXES = {'quotation': 'QUO', 'proforma': 'PRO', 'invoice': 'INV'}
+
+    @property
+    def label(self):
+        return self.LABELS.get(self.doc_type, self.doc_type.title())
+
+    @property
+    def lines(self):
+        try:
+            return json.loads(self.lines_json or '[]')
+        except ValueError:
+            return []
+
+    @lines.setter
+    def lines(self, value):
+        self.lines_json = json.dumps(value or [])
+
+    @property
+    def subtotal(self):
+        return round(sum(float(l.get('quantity', 0)) * float(l.get('price', 0)) for l in self.lines), 2)
+
+    @property
+    def total(self):
+        return round(max(self.subtotal - (self.discount_amount or 0), 0), 2)
+
+    @property
+    def tax_breakdown(self):
+        """VAT included in the total, per tax type, after spreading the discount across lines."""
+        subtotal = self.subtotal
+        ratio = (self.total / subtotal) if subtotal else 0
+        out = {}
+        for line in self.lines:
+            amount = float(line.get('quantity', 0)) * float(line.get('price', 0)) * ratio
+            tax_type = line.get('tax_type') or 'B'
+            rate = TAX_RATES.get(tax_type, 0.0)
+            entry = out.setdefault(tax_type, {'taxable': 0.0, 'tax': 0.0, 'rate': rate})
+            entry['taxable'] += amount
+            entry['tax'] += amount * rate / (100 + rate) if rate else 0.0
+        return {k: {kk: round(vv, 2) if isinstance(vv, float) else vv for kk, vv in v.items()} for k, v in out.items()}
+
+    @property
+    def total_tax(self):
+        return round(sum(v['tax'] for v in self.tax_breakdown.values()), 2)
+
+    @property
+    def amount_paid(self):
+        return round(sum(p.amount for p in self.payments), 2)
+
+    @property
+    def balance(self):
+        return round(self.total - self.amount_paid, 2) if self.doc_type == 'invoice' else 0.0
+
+    @property
+    def is_overdue(self):
+        return (self.doc_type == 'invoice' and self.status in ('unpaid', 'partial')
+                and self.due_date is not None and self.due_date < datetime.date.today())
+
+    @property
+    def display_status(self):
+        return 'overdue' if self.is_overdue else self.status
+
+    @property
+    def is_editable(self):
+        return self.status == 'draft'
+
+    def refresh_payment_status(self):
+        if self.doc_type != 'invoice' or self.status in ('draft', 'void'):
+            return
+        if self.amount_paid >= self.total - 0.005:
+            self.status = 'paid'
+        elif self.amount_paid > 0:
+            self.status = 'partial'
+        else:
+            self.status = 'unpaid'
+
+
+class DocumentPayment(db.Model):
+    __tablename__ = 'document_payments'
+    id = db.Column(db.Integer, primary_key=True)
+    document_id = db.Column(db.Integer, db.ForeignKey('documents.id'), nullable=False, index=True)
+    amount = db.Column(db.Float, nullable=False)
+    method = db.Column(db.String(30), nullable=False, default='cash')  # cash | mpesa | bank | cheque | card
+    reference = db.Column(db.String(80), nullable=True)
+    paid_on = db.Column(db.Date, nullable=False, default=datetime.date.today)
+    recorded_by = db.Column(db.String(80), nullable=True)
+    shift_id = db.Column(db.Integer, db.ForeignKey('shifts.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    document = db.relationship('Document', backref=db.backref('payments', lazy=True, order_by='DocumentPayment.id'))
+
+
+class Supplier(db.Model):
+    __tablename__ = 'suppliers'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    phone = db.Column(db.String(30), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    kra_pin = db.Column(db.String(20), nullable=True)
+    address = db.Column(db.String(255), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+
+class PurchaseOrder(db.Model):
+    __tablename__ = 'purchase_orders'
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='ordered')  # ordered | received | cancelled
+    lines_json = db.Column(db.Text, nullable=False, default='[]')  # [{product_id, name, quantity, unit_cost}]
+    supplier_invoice_no = db.Column(db.String(60), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    expected_on = db.Column(db.Date, nullable=True)
+    received_at = db.Column(db.DateTime, nullable=True)
+    received_by = db.Column(db.String(80), nullable=True)
+
+    supplier = db.relationship('Supplier', backref=db.backref('purchase_orders', lazy=True))
+
+    @property
+    def number(self):
+        return f"PO-{self.id:04d}"
+
+    @property
+    def lines(self):
+        try:
+            return json.loads(self.lines_json or '[]')
+        except ValueError:
+            return []
+
+    @lines.setter
+    def lines(self, value):
+        self.lines_json = json.dumps(value or [])
+
+    @property
+    def total(self):
+        return round(sum(float(l.get('quantity', 0)) * float(l.get('unit_cost', 0)) for l in self.lines), 2)
+
+
+def ensure_columns():
+    """
+    Add columns introduced after a table was first created. There's no Alembic
+    migrations folder (and no shell on Render's free tier), so this keeps
+    existing databases in step on boot. It only ever ADDs nullable columns.
+    """
+    wanted = {
+        'products': {'category': 'VARCHAR(60)', 'tax_type': 'VARCHAR(1)', 'cost_price': 'FLOAT'},
+        'business_settings': {'kra_pin': 'VARCHAR(20)', 'email': 'VARCHAR(120)', 'bank_details': 'TEXT',
+                              'invoice_terms': 'TEXT', 'quotation_valid_days': 'INTEGER', 'invoice_due_days': 'INTEGER'},
+        'sale_meta': {'customer_id': 'INTEGER', 'shift_id': 'INTEGER', 'document_id': 'INTEGER'},
+    }
+    inspector = db.inspect(db.engine)
+    tables = set(inspector.get_table_names())
+    for table, columns in wanted.items():
+        if table not in tables:
+            continue
+        existing = {c['name'] for c in inspector.get_columns(table)}
+        for name, ddl in columns.items():
+            if name not in existing:
+                db.session.execute(db.text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
+                print(f"✅ Added column {table}.{name}")
+    db.session.commit()
 
 
 # --- User Loader ---
@@ -400,6 +641,7 @@ def seed_default_integrations():
 with app.app_context():
     try:
         db.create_all()
+        ensure_columns()
         if not User.query.filter_by(username='admin').first():
             admin_password = os.environ.get('ADMIN_PASSWORD')
             if not admin_password:
@@ -487,6 +729,8 @@ def sale_payload(sale):
         product = products.get(item.get('id'))
         if product is not None and product.barcode:
             item.setdefault('barcode', product.barcode)
+        if product is not None and not item.get('tax_type'):
+            item['tax_type'] = product.tax_type or 'B'
     meta = sale.meta
     return {
         'id': sale.id,
@@ -639,7 +883,8 @@ def finalize_payment(payment, status, receipt_number=None, message=None, raw=Non
     sale = payment.sale
     if status == 'paid':
         emit_event(integrations.PAYMENT_COMPLETED, sale=sale, payment=payment)
-        emit_event(integrations.SALE_COMPLETED, sale=sale, payment=payment)
+        if all(p.status == 'paid' for p in sale.payments if p.status != 'cancelled'):
+            emit_event(integrations.SALE_COMPLETED, sale=sale, payment=payment)
     elif status == 'failed':
         emit_event(integrations.PAYMENT_FAILED, sale=sale, payment=payment)
     return True
@@ -665,6 +910,22 @@ def restock_sale_items(sale, note, username):
                 restocked_by=username
             ))
 
+def product_form_context():
+    categories = [c for (c,) in db.session.query(Product.category).filter(Product.category.isnot(None)).distinct().order_by(Product.category)]
+    return {'categories': categories, 'tax_types': TAX_TYPES}
+
+
+def apply_product_extras(product, form):
+    product.category = (form.get('category') or '').strip() or None
+    tax_type = (form.get('tax_type') or 'B').strip().upper()
+    product.tax_type = tax_type if tax_type in TAX_RATES else 'B'
+    cost = (form.get('cost_price') or '').strip()
+    try:
+        product.cost_price = float(cost) if cost else None
+    except ValueError:
+        pass
+
+
 # --- Routes ---
 @app.route('/')
 @login_required
@@ -683,12 +944,20 @@ def index():
 
         low_stock_products = [p for p in all_products if p.is_low_stock]
 
+        today_start = datetime.datetime.combine(datetime.date.today(), datetime.time.min)
+        today_sales = db.session.query(db.func.sum(Sale.total_amount)).filter(
+            Sale.timestamp >= today_start, Sale.refunded.is_(False)).scalar() or 0
+        open_invoices = Document.query.filter(Document.doc_type == 'invoice', Document.status.in_(('unpaid', 'partial'))).all()
+
         return render_template(
             'index.html',
             total_sales=total_sales,
             total_items=total_items,
             products=all_products,
-            low_stock_products=low_stock_products
+            low_stock_products=low_stock_products,
+            today_sales=today_sales,
+            outstanding=sum(d.balance for d in open_invoices),
+            overdue_count=sum(1 for d in open_invoices if d.is_overdue)
         )
     except Exception as e:
         print(f"Error in index route: {e}")
@@ -755,6 +1024,9 @@ def manage_products():
             flash('Price, quantity, and reorder level must be valid numbers.', 'error')
             return redirect(url_for('manage_products'))
 
+        if image and image.filename and not os.environ.get('CLOUDINARY_CLOUD_NAME'):
+            flash('Product saved without its image: set the CLOUDINARY_* environment variables to enable image uploads.', 'info')
+            image = None
         if image and image.filename:
             try:
                 upload_result = cloudinary.uploader.upload(image)
@@ -766,6 +1038,7 @@ def manage_products():
             
         try:
             new_product = Product(name=name, price=price, quantity=quantity, reorder_level=reorder_level, barcode=barcode, image_url=image_url, public_id=public_id)
+            apply_product_extras(new_product, request.form)
             db.session.add(new_product)
             db.session.commit()
             flash('Product added successfully!', 'success')
@@ -777,13 +1050,13 @@ def manage_products():
         return redirect(url_for('manage_products'))
 
     try:
-        all_products = Product.query.all()
+        all_products = Product.query.order_by(Product.category, Product.name).all()
     except Exception as e:
         print(f"Error fetching products: {e}")
         all_products = []
         flash('Error loading products', 'error')
         
-    return render_template('products.html', products=all_products)
+    return render_template('products.html', products=all_products, **product_form_context())
 
 @app.route('/products/edit/<int:product_id>', methods=['GET', 'POST'])
 @login_required
@@ -803,17 +1076,21 @@ def edit_product(product_id):
                 clash = Product.query.filter(Product.barcode == new_barcode, Product.id != product.id).first()
                 if clash:
                     flash(f'Barcode "{new_barcode}" is already assigned to {clash.name}.', 'error')
-                    return render_template('edit_product.html', product=product)
+                    return render_template('edit_product.html', product=product, **product_form_context())
 
             product.name = request.form.get('name')
             product.price = float(request.form.get('price'))
             product.quantity = int(request.form.get('quantity'))
             product.barcode = new_barcode
+            apply_product_extras(product, request.form)
             reorder_level_str = request.form.get('reorder_level')
             if reorder_level_str:
                 product.reorder_level = int(reorder_level_str)
             product.updated_at = datetime.datetime.utcnow()
             image = request.files.get('image')
+            if image and image.filename and not os.environ.get('CLOUDINARY_CLOUD_NAME'):
+                flash('Image not changed: set the CLOUDINARY_* environment variables to enable image uploads.', 'info')
+                image = None
 
             if image and image.filename:
                 if product.public_id:
@@ -830,7 +1107,7 @@ def edit_product(product_id):
             print(f"Error updating product: {e}")
             flash('Error updating product', 'error')
             
-    return render_template('edit_product.html', product=product)
+    return render_template('edit_product.html', product=product, **product_form_context())
 
 @app.route('/products/restock/<int:product_id>', methods=['GET', 'POST'])
 @login_required
@@ -931,7 +1208,8 @@ def process_sales():
                         'name': product.name,
                         'price': product.price,
                         'quantity': quantity,
-                        'subtotal': product.price * quantity
+                        'subtotal': product.price * quantity,
+                        'tax_type': product.tax_type or 'B',
                     }
                     active_transaction = session.get('active_transaction', [])
                     active_transaction.append(item)
@@ -958,8 +1236,11 @@ def process_sales():
         print(f"Error loading payment integrations: {e}")
         payment_options = []
 
+    cart_customer = Customer.query.get(session['cart_customer_id']) if session.get('cart_customer_id') else None
+    cart_document = Document.query.get(session['cart_document_id']) if session.get('cart_document_id') else None
     return render_template('sales.html', products=all_products_dict, transaction=session.get('active_transaction', []), total=total,
-                           payment_options=payment_options)
+                           payment_options=payment_options, customers=Customer.query.order_by(Customer.name).all(),
+                           cart_customer=cart_customer, cart_document=cart_document)
 
 @app.route('/complete_sale', methods=['POST'])
 @login_required
@@ -1010,43 +1291,78 @@ def complete_sale():
                 flash('That payment method is not available. Pick another one.', 'error')
                 return redirect(url_for('process_sales'))
 
+        customer = find_or_create_customer(request.form)
         new_sale = Sale(
             total_amount=total_amount,
             items=items_str,
             user_id=current_user.id if current_user.is_authenticated else None,
-            customer_name=request.form.get('customer_name', '').strip() or None,
-            customer_phone=request.form.get('customer_phone', '').strip() or None,
-            customer_email=request.form.get('customer_email', '').strip() or None,
+            customer_name=request.form.get('customer_name', '').strip() or (customer.name if customer else None),
+            customer_phone=request.form.get('customer_phone', '').strip() or (customer.phone if customer else None),
+            customer_email=request.form.get('customer_email', '').strip() or (customer.email if customer else None),
             discount_amount=discount_amount,
             discount_reason=discount_reason if discount_amount > 0 else None
         )
         db.session.add(new_sale)
         db.session.flush()
 
+        # Split payment: part cash now, the rest through the chosen integration
+        cash_part = 0.0
+        if payment_config is not None:
+            cash_part = min(max(_parse_float(request.form.get('cash_part'), 0.0) or 0.0, 0.0), total_amount)
+            if cash_part >= total_amount:
+                payment_config, cash_part = None, 0.0  # all cash after all
+
         method_name = 'cash' if payment_config is None else payment_method_name(payment_config)
+        shift = current_shift()
         db.session.add(SaleMeta(
             sale_id=new_sale.id,
-            customer_pin=(request.form.get('customer_pin', '').strip().upper() or None),
-            payment_method=method_name,
+            customer_pin=(request.form.get('customer_pin', '').strip().upper() or (customer.kra_pin if customer else None)),
+            payment_method='split' if cash_part else method_name,
+            customer_id=customer.id if customer else None,
+            shift_id=shift.id if shift else None,
         ))
-        payment = Payment(
-            sale_id=new_sale.id,
-            method=method_name,
-            provider=payment_config.key if payment_config else None,
-            amount=total_amount,
-            phone=(request.form.get('payment_phone', '').strip() or new_sale.customer_phone),
-            status='paid' if payment_config is None else 'pending',
-        )
-        db.session.add(payment)
+
+        cash_due = total_amount if payment_config is None else cash_part
+        cash_message = None
+        tendered = _parse_float(request.form.get('amount_tendered'))
+        if cash_due and tendered:
+            if tendered + 0.005 < cash_due:
+                db.session.rollback()
+                flash(f'Cash tendered ({tendered:.2f}) is less than the cash due ({cash_due:.2f}).', 'error')
+                return redirect(url_for('process_sales'))
+            cash_message = f'Tendered {tendered:.2f}, change {tendered - cash_due:.2f}'
+        if cash_due:
+            db.session.add(Payment(sale_id=new_sale.id, method='cash', amount=round(cash_due, 2), status='paid',
+                                   message=cash_message))
+        payment = None
+        if payment_config is not None:
+            payment = Payment(
+                sale_id=new_sale.id,
+                method=method_name,
+                provider=payment_config.key,
+                amount=round(total_amount - cash_part, 2),
+                phone=(request.form.get('payment_phone', '').strip() or new_sale.customer_phone),
+                status='pending',
+            )
+            db.session.add(payment)
+
+        # A quotation/proforma sold over the counter
+        cart_doc_id = session.pop('cart_document_id', None)
+        session.pop('cart_customer_id', None)
+        if cart_doc_id:
+            doc = Document.query.get(cart_doc_id)
+            if doc is not None and doc.doc_type in ('quotation', 'proforma'):
+                doc.status = 'converted'
+                doc.sale_id = new_sale.id
         db.session.commit()
 
         # Store the ID of the new sale in the session to easily redirect to its receipt
         session['last_sale_id'] = new_sale.id
         session.pop('active_transaction', None)
 
-        if payment_config is None:
-            emit_event(integrations.SALE_COMPLETED, sale=new_sale, payment=payment)
-            flash('Sale completed successfully!', 'success')
+        if payment is None:
+            emit_event(integrations.SALE_COMPLETED, sale=new_sale)
+            flash('Sale completed successfully!' + (f' {cash_message}.' if cash_message else ''), 'success')
             return redirect(url_for('view_receipt', sale_id=new_sale.id))
 
         request_payment(payment)
@@ -1076,6 +1392,8 @@ def remove_item_from_sale(item_id):
 @login_required
 def cancel_sale():
     session['active_transaction'] = []
+    session.pop('cart_document_id', None)
+    session.pop('cart_customer_id', None)
     flash('Sale cancelled.', 'info')
     return redirect(url_for('process_sales'))
 
@@ -1197,6 +1515,11 @@ def refund_sale(sale_id):
     if sale.refunded:
         flash('This sale has already been refunded.', 'error')
         return redirect(url_for('view_receipt', sale_id=sale_id))
+
+    if sale.meta and sale.meta.document_id:
+        doc = Document.query.get(sale.meta.document_id)
+        flash(f'This sale belongs to invoice {doc.number if doc else ""}. Void the invoice instead.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id) if doc else url_for('view_receipt', sale_id=sale_id))
 
     reason = request.form.get('refund_reason', '').strip() or None
 
@@ -1523,6 +1846,13 @@ def business_settings():
         settings.business_name = request.form.get('business_name', '').strip() or None
         settings.address = request.form.get('address', '').strip() or None
         settings.phone = request.form.get('phone', '').strip() or None
+        settings.kra_pin = request.form.get('kra_pin', '').strip().upper() or None
+        settings.email = request.form.get('email', '').strip() or None
+        settings.bank_details = request.form.get('bank_details', '').strip() or None
+        settings.invoice_terms = request.form.get('invoice_terms', '').strip() or None
+        for field in ('quotation_valid_days', 'invoice_due_days'):
+            value = request.form.get(field, '').strip()
+            setattr(settings, field, int(value) if value.isdigit() else None)
         settings.mpesa_till_number = request.form.get('mpesa_till_number', '').strip() or None
         settings.mpesa_paybill_number = request.form.get('mpesa_paybill_number', '').strip() or None
         settings.mpesa_paybill_account = request.form.get('mpesa_paybill_account', '').strip() or None
@@ -1924,6 +2254,741 @@ def retry_integration_log(log_id):
     db.session.commit()
     flash(f'Retried: {"success" if result.ok else result.error}', 'success' if result.ok else 'error')
     return redirect(request.referrer or url_for('list_integrations'))
+
+# =====================================================================
+# Customers
+# =====================================================================
+def _parse_float(value, default=None):
+    try:
+        return float(str(value).replace(',', '').strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_date(value, default=None):
+    try:
+        return datetime.datetime.strptime((value or '').strip(), '%Y-%m-%d').date()
+    except ValueError:
+        return default
+
+
+def find_or_create_customer(form):
+    """Pick the customer chosen at checkout, or save a new one when a name and phone are given."""
+    customer_id = (form.get('customer_id') or '').strip()
+    if customer_id.isdigit():
+        return Customer.query.get(int(customer_id))
+    name = (form.get('customer_name') or '').strip()
+    phone = (form.get('customer_phone') or '').strip()
+    if not phone:
+        return None
+    customer = Customer.query.filter_by(phone=phone).first()
+    if customer is None and name:
+        customer = Customer(name=name, phone=phone,
+                            email=(form.get('customer_email') or '').strip() or None,
+                            kra_pin=(form.get('customer_pin') or '').strip().upper() or None)
+        db.session.add(customer)
+        db.session.flush()
+    return customer
+
+
+def customer_balance(customer):
+    return round(sum(d.balance for d in customer.documents if d.doc_type == 'invoice' and d.status in ('unpaid', 'partial')), 2)
+
+
+@app.route('/customers', methods=['GET', 'POST'])
+@login_required
+def list_customers():
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        if not name:
+            flash('Customer name is required.', 'error')
+        else:
+            customer = Customer(name=name)
+            _fill_contact(customer, request.form)
+            customer.credit_limit = _parse_float(request.form.get('credit_limit'))
+            db.session.add(customer)
+            db.session.commit()
+            flash(f'Customer {name} added.', 'success')
+            return redirect(url_for('view_customer', customer_id=customer.id))
+    q = request.args.get('q', '').strip()
+    query = Customer.query
+    if q:
+        like = f'%{q}%'
+        query = query.filter(db.or_(Customer.name.ilike(like), Customer.phone.ilike(like), Customer.kra_pin.ilike(like)))
+    customers = query.order_by(Customer.name).all()
+    return render_template('customers.html', customers=customers, q=q, balance=customer_balance)
+
+
+def _fill_contact(obj, form):
+    obj.name = (form.get('name') or obj.name or '').strip()
+    obj.phone = (form.get('phone') or '').strip() or None
+    obj.email = (form.get('email') or '').strip() or None
+    obj.kra_pin = (form.get('kra_pin') or '').strip().upper() or None
+    obj.address = (form.get('address') or '').strip() or None
+    obj.notes = (form.get('notes') or '').strip() or None
+
+
+@app.route('/customers/<int:customer_id>', methods=['GET', 'POST'])
+@login_required
+def view_customer(customer_id):
+    customer = Customer.query.get_or_404(customer_id)
+    if request.method == 'POST':
+        _fill_contact(customer, request.form)
+        customer.credit_limit = _parse_float(request.form.get('credit_limit'))
+        db.session.commit()
+        flash('Customer updated.', 'success')
+        return redirect(url_for('view_customer', customer_id=customer.id))
+    sales = (Sale.query.join(SaleMeta, SaleMeta.sale_id == Sale.id)
+             .filter(SaleMeta.customer_id == customer.id).order_by(Sale.timestamp.desc()).limit(50).all())
+    documents = Document.query.filter_by(customer_id=customer.id).order_by(Document.id.desc()).all()
+    total_spent = sum(s.total_amount for s in sales if not s.refunded)
+    return render_template('customer_view.html', customer=customer, sales=sales, documents=documents,
+                           total_spent=total_spent, balance=customer_balance(customer))
+
+
+def aging_buckets(invoices, today=None):
+    today = today or datetime.date.today()
+    buckets = {'current': 0.0, '1-30': 0.0, '31-60': 0.0, '61-90': 0.0, '90+': 0.0}
+    for inv in invoices:
+        if inv.status not in ('unpaid', 'partial') or inv.balance <= 0:
+            continue
+        days = (today - (inv.due_date or inv.issue_date)).days
+        key = 'current' if days <= 0 else '1-30' if days <= 30 else '31-60' if days <= 60 else '61-90' if days <= 90 else '90+'
+        buckets[key] += inv.balance
+    return {k: round(v, 2) for k, v in buckets.items()}
+
+
+@app.route('/customers/<int:customer_id>/statement')
+@login_required
+def customer_statement(customer_id):
+    customer = Customer.query.get_or_404(customer_id)
+    invoices = [d for d in customer.documents if d.doc_type == 'invoice' and d.status not in ('draft', 'void')]
+    entries = []
+    for inv in invoices:
+        entries.append({'date': inv.issue_date, 'ref': inv.number, 'description': f'Invoice (due {inv.due_date or "-"})',
+                        'debit': inv.total, 'credit': 0.0, 'doc': inv})
+        for pay in inv.payments:
+            entries.append({'date': pay.paid_on, 'ref': inv.number, 'description': f'Payment ({pay.method}{" " + pay.reference if pay.reference else ""})',
+                            'debit': 0.0, 'credit': pay.amount, 'doc': inv})
+    entries.sort(key=lambda e: (e['date'], e['credit'] > 0))
+    running = 0.0
+    for e in entries:
+        running += e['debit'] - e['credit']
+        e['balance'] = round(running, 2)
+    return render_template('statement.html', customer=customer, entries=entries, balance=round(running, 2),
+                           aging=aging_buckets(invoices), settings=BusinessSettings.get(), today=datetime.date.today())
+
+
+# =====================================================================
+# Shifts & cash-up
+# =====================================================================
+def current_shift(user=None):
+    user = user or current_user
+    if not getattr(user, 'is_authenticated', False):
+        return None
+    return Shift.query.filter_by(user_id=user.id, closed_at=None).order_by(Shift.id.desc()).first()
+
+
+@app.context_processor
+def inject_shift():
+    try:
+        return {'open_shift': current_shift()}
+    except Exception:
+        return {'open_shift': None}
+
+
+def cash_summary(sales, document_payments, opening_float=0.0):
+    """Totals for a Z report over a set of sales and invoice payments."""
+    by_method = defaultdict(float)
+    gross = discounts = refunds = cash_refunds = 0.0
+    count = 0
+    for sale in sales:
+        meta = sale.meta
+        is_invoice = meta is not None and meta.document_id
+        if is_invoice:
+            continue  # credit invoices are counted when they're paid
+        count += 1
+        gross += sale.subtotal
+        discounts += sale.discount_amount or 0
+        paid = [p for p in sale.payments if p.status == 'paid']
+        for p in paid:
+            by_method[p.method] += p.amount
+        if sale.refunded:
+            refunds += sum(p.amount for p in paid)
+            cash_refunds += sum(p.amount for p in paid if p.method == 'cash')
+    invoice_by_method = defaultdict(float)
+    for pay in document_payments:
+        invoice_by_method[pay.method] += pay.amount
+    cash_in = by_method.get('cash', 0.0) + invoice_by_method.get('cash', 0.0)
+    return {
+        'transactions': count,
+        'gross': round(gross, 2),
+        'discounts': round(discounts, 2),
+        'net': round(gross - discounts, 2),
+        'refunds': round(refunds, 2),
+        'by_method': {k: round(v, 2) for k, v in sorted(by_method.items())},
+        'invoice_by_method': {k: round(v, 2) for k, v in sorted(invoice_by_method.items())},
+        'invoice_collections': round(sum(invoice_by_method.values()), 2),
+        'opening_float': round(opening_float or 0, 2),
+        'expected_cash': round((opening_float or 0) + cash_in - cash_refunds, 2),
+    }
+
+
+def shift_summary(shift):
+    sales = (Sale.query.join(SaleMeta, SaleMeta.sale_id == Sale.id)
+             .filter(SaleMeta.shift_id == shift.id).order_by(Sale.timestamp).all())
+    payments = DocumentPayment.query.filter_by(shift_id=shift.id).all()
+    return cash_summary(sales, payments, shift.opening_float)
+
+
+@app.route('/shift', methods=['GET', 'POST'])
+@login_required
+def my_shift():
+    shift = current_shift()
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'open' and shift is None:
+            shift = Shift(user_id=current_user.id, opening_float=_parse_float(request.form.get('opening_float'), 0.0) or 0.0)
+            db.session.add(shift)
+            db.session.commit()
+            flash('Shift opened. Sales you make now are counted in this shift.', 'success')
+            return redirect(url_for('process_sales'))
+        if action == 'close' and shift is not None:
+            summary = shift_summary(shift)
+            shift.counted_cash = _parse_float(request.form.get('counted_cash'), 0.0)
+            shift.expected_cash = summary['expected_cash']
+            shift.notes = request.form.get('notes', '').strip() or None
+            shift.closed_at = datetime.datetime.utcnow()
+            db.session.commit()
+            flash('Shift closed.', 'success')
+            return redirect(url_for('shift_report', shift_id=shift.id))
+    summary = shift_summary(shift) if shift else None
+    recent = Shift.query.order_by(Shift.id.desc()).limit(20).all() if current_user.is_admin else \
+        Shift.query.filter_by(user_id=current_user.id).order_by(Shift.id.desc()).limit(10).all()
+    return render_template('shift.html', shift=shift, summary=summary, recent=recent)
+
+
+@app.route('/shift/<int:shift_id>/report')
+@login_required
+def shift_report(shift_id):
+    shift = Shift.query.get_or_404(shift_id)
+    if shift.user_id != current_user.id and not current_user.is_admin:
+        abort(403)
+    summary = shift_summary(shift)
+    if shift.expected_cash is not None:
+        summary['expected_cash'] = shift.expected_cash
+    return render_template('z_report.html', title=f'Shift #{shift.id} Z report', shift=shift, summary=summary,
+                           settings=BusinessSettings.get(), period=None)
+
+
+@app.route('/reports/end-of-day')
+@login_required
+@admin_required
+def end_of_day_report():
+    day = _parse_date(request.args.get('date'), datetime.date.today())
+    start = datetime.datetime.combine(day, datetime.time.min)
+    end = start + datetime.timedelta(days=1)
+    sales = Sale.query.filter(Sale.timestamp >= start, Sale.timestamp < end).order_by(Sale.timestamp).all()
+    payments = DocumentPayment.query.filter(DocumentPayment.paid_on == day).all()
+    shifts = Shift.query.filter(Shift.opened_at >= start, Shift.opened_at < end).all()
+    summary = cash_summary(sales, payments, sum(s.opening_float for s in shifts))
+    return render_template('z_report.html', title=f'End of day report {day.isoformat()}', shift=None, summary=summary,
+                           settings=BusinessSettings.get(), period=day, shifts=shifts)
+
+
+# =====================================================================
+# Quotations, proforma invoices and invoices
+# =====================================================================
+DOC_TYPES = ('quotation', 'proforma', 'invoice')
+
+
+def next_document_number(doc_type):
+    prefix = Document.PREFIXES[doc_type]
+    highest = 0
+    for (number,) in db.session.query(Document.number).filter(Document.number.like(f'{prefix}-%')):
+        tail = number.split('-', 1)[1]
+        if tail.isdigit():
+            highest = max(highest, int(tail))
+    return f'{prefix}-{highest + 1:04d}'
+
+
+def parse_document_lines(form):
+    """Read the line-item rows from the document form."""
+    products = {p.id: p for p in Product.query.all()}
+    lines = []
+    for pid, desc, qty, price, tax in zip(form.getlist('line_product_id'), form.getlist('line_description'),
+                                          form.getlist('line_quantity'), form.getlist('line_price'),
+                                          form.getlist('line_tax_type')):
+        product = products.get(int(pid)) if pid and pid.isdigit() else None
+        desc = (desc or '').strip() or (product.name if product else '')
+        quantity = _parse_float(qty, 0) or 0
+        if not desc or quantity <= 0:
+            continue
+        unit_price = _parse_float(price)
+        if unit_price is None:
+            unit_price = product.price if product else 0.0
+        tax = (tax or (product.tax_type if product else 'B') or 'B').upper()
+        lines.append({
+            'product_id': product.id if product else None,
+            'description': desc,
+            'quantity': quantity,
+            'price': round(unit_price, 2),
+            'tax_type': tax if tax in TAX_RATES else 'B',
+        })
+    return lines
+
+
+def _apply_document_form(doc, form):
+    customer_id = (form.get('customer_id') or '').strip()
+    doc.customer_id = int(customer_id) if customer_id.isdigit() else None
+    doc.issue_date = _parse_date(form.get('issue_date'), doc.issue_date or datetime.date.today())
+    doc.valid_until = _parse_date(form.get('valid_until'))
+    doc.due_date = _parse_date(form.get('due_date'))
+    doc.discount_amount = max(_parse_float(form.get('discount_amount'), 0.0) or 0.0, 0.0)
+    doc.notes = form.get('notes', '').strip() or None
+    doc.terms = form.get('terms', '').strip() or None
+    doc.lines = parse_document_lines(form)
+
+
+def _document_form_context(doc):
+    products = Product.query.order_by(Product.name).all()
+    return dict(doc=doc, customers=Customer.query.order_by(Customer.name).all(), products=products,
+                tax_types=TAX_TYPES)
+
+
+@app.route('/documents')
+@login_required
+def list_documents():
+    doc_type = request.args.get('type', 'invoice')
+    if doc_type not in DOC_TYPES:
+        doc_type = 'invoice'
+    status = request.args.get('status', '')
+    query = Document.query.filter_by(doc_type=doc_type)
+    if status and status != 'overdue':
+        query = query.filter_by(status=status)
+    docs = query.order_by(Document.id.desc()).all()
+    if status == 'overdue':
+        docs = [d for d in docs if d.is_overdue]
+    outstanding = sum(d.balance for d in docs if d.doc_type == 'invoice' and d.status in ('unpaid', 'partial'))
+    return render_template('documents.html', docs=docs, doc_type=doc_type, status=status,
+                           label=Document.LABELS[doc_type], outstanding=round(outstanding, 2))
+
+
+@app.route('/documents/new', methods=['GET', 'POST'])
+@login_required
+def new_document():
+    doc_type = request.values.get('type', 'quotation')
+    if doc_type not in DOC_TYPES:
+        abort(404)
+    settings = BusinessSettings.get()
+    doc = Document(doc_type=doc_type, status='draft', issue_date=datetime.date.today(), terms=settings.invoice_terms)
+    if doc_type == 'invoice':
+        doc.due_date = datetime.date.today() + datetime.timedelta(days=settings.invoice_due_days or 30)
+    else:
+        doc.valid_until = datetime.date.today() + datetime.timedelta(days=settings.quotation_valid_days or 14)
+    if request.args.get('customer_id', '').isdigit():
+        doc.customer_id = int(request.args['customer_id'])
+    if request.method == 'POST':
+        _apply_document_form(doc, request.form)
+        if not doc.lines:
+            flash('Add at least one line item.', 'error')
+            return render_template('document_form.html', **_document_form_context(doc))
+        doc.number = next_document_number(doc_type)
+        doc.created_by = current_user.username
+        db.session.add(doc)
+        db.session.commit()
+        flash(f'{doc.label} {doc.number} saved as a draft.', 'success')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    return render_template('document_form.html', **_document_form_context(doc))
+
+
+@app.route('/documents/<int:doc_id>')
+@login_required
+def view_document(doc_id):
+    doc = Document.query.get_or_404(doc_id)
+    settings = BusinessSettings.get()
+    qr_b64 = generate_qr_code_b64(doc.sale.kra_qr_code_data) if doc.sale and doc.sale.kra_qr_code_data else None
+    children = Document.query.filter_by(source_id=doc.id).all()
+    return render_template('document_view.html', doc=doc, settings=settings, qr_b64=qr_b64, children=children,
+                           today=datetime.date.today())
+
+
+@app.route('/documents/<int:doc_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_document(doc_id):
+    doc = Document.query.get_or_404(doc_id)
+    if not doc.is_editable:
+        flash('Only drafts can be edited. Convert or duplicate it instead.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    if request.method == 'POST':
+        _apply_document_form(doc, request.form)
+        if not doc.lines:
+            flash('Add at least one line item.', 'error')
+            return render_template('document_form.html', **_document_form_context(doc))
+        db.session.commit()
+        flash(f'{doc.number} updated.', 'success')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    return render_template('document_form.html', **_document_form_context(doc))
+
+
+@app.route('/documents/<int:doc_id>/status', methods=['POST'])
+@login_required
+def set_document_status(doc_id):
+    doc = Document.query.get_or_404(doc_id)
+    new_status = request.form.get('status')
+    allowed = {
+        'quotation': {'draft': ('sent', 'accepted', 'declined'), 'sent': ('accepted', 'declined'), 'accepted': ('declined',), 'declined': ('accepted',)},
+        'proforma': {'draft': ('sent',), 'sent': ('draft',)},
+    }
+    if new_status in allowed.get(doc.doc_type, {}).get(doc.status, ()):
+        doc.status = new_status
+        db.session.commit()
+        flash(f'{doc.number} marked as {new_status}.', 'success')
+    else:
+        flash('That status change is not allowed.', 'error')
+    return redirect(url_for('view_document', doc_id=doc.id))
+
+
+@app.route('/documents/<int:doc_id>/convert/<target>', methods=['POST'])
+@login_required
+def convert_document(doc_id, target):
+    doc = Document.query.get_or_404(doc_id)
+    allowed = {'quotation': ('proforma', 'invoice'), 'proforma': ('invoice',)}
+    if target not in allowed.get(doc.doc_type, ()):
+        flash('That conversion is not possible.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    settings = BusinessSettings.get()
+    new = Document(doc_type=target, status='draft', customer_id=doc.customer_id, issue_date=datetime.date.today(),
+                   discount_amount=doc.discount_amount, notes=doc.notes, terms=doc.terms, source_id=doc.id,
+                   created_by=current_user.username)
+    new.lines = doc.lines
+    if target == 'invoice':
+        new.due_date = datetime.date.today() + datetime.timedelta(days=settings.invoice_due_days or 30)
+    else:
+        new.valid_until = datetime.date.today() + datetime.timedelta(days=settings.quotation_valid_days or 14)
+    new.number = next_document_number(target)
+    if doc.status in ('draft', 'sent', 'accepted'):
+        doc.status = 'converted'
+    db.session.add(new)
+    db.session.commit()
+    flash(f'{new.label} {new.number} created from {doc.number}. Review it, then issue it.', 'success')
+    return redirect(url_for('view_document', doc_id=new.id))
+
+
+@app.route('/documents/<int:doc_id>/duplicate', methods=['POST'])
+@login_required
+def duplicate_document(doc_id):
+    doc = Document.query.get_or_404(doc_id)
+    new = Document(doc_type=doc.doc_type, status='draft', customer_id=doc.customer_id, issue_date=datetime.date.today(),
+                   discount_amount=doc.discount_amount, notes=doc.notes, terms=doc.terms, created_by=current_user.username,
+                   valid_until=doc.valid_until, due_date=doc.due_date)
+    new.lines = doc.lines
+    new.number = next_document_number(doc.doc_type)
+    db.session.add(new)
+    db.session.commit()
+    flash(f'Copied to {new.number}.', 'success')
+    return redirect(url_for('edit_document', doc_id=new.id))
+
+
+@app.route('/documents/<int:doc_id>/to-cart', methods=['POST'])
+@login_required
+def document_to_cart(doc_id):
+    """Sell a quotation/proforma over the counter: load its items into the POS cart."""
+    doc = Document.query.get_or_404(doc_id)
+    cart = []
+    skipped = []
+    for line in doc.lines:
+        product = Product.query.get(line['product_id']) if line.get('product_id') else None
+        if product is None:
+            skipped.append(line['description'])
+            continue
+        qty = int(line['quantity'])
+        cart.append({'id': product.id, 'name': product.name, 'price': line['price'], 'quantity': qty,
+                     'subtotal': round(line['price'] * qty, 2), 'tax_type': line.get('tax_type') or product.tax_type or 'B'})
+    session['active_transaction'] = cart
+    session['cart_document_id'] = doc.id
+    session['cart_customer_id'] = doc.customer_id
+    if skipped:
+        flash(f'Not added (not stock items): {", ".join(skipped)}', 'info')
+    flash(f'{doc.number} loaded into the cart. Apply the discount ({doc.discount_amount:.2f}) if it had one, then take payment.', 'success')
+    return redirect(url_for('process_sales'))
+
+
+@app.route('/documents/<int:doc_id>/issue', methods=['POST'])
+@login_required
+def issue_invoice(doc_id):
+    """Finalise an invoice on credit: deduct stock, record it as a sale, and send it to tax integrations."""
+    doc = Document.query.get_or_404(doc_id)
+    if doc.doc_type != 'invoice' or doc.status != 'draft':
+        flash('Only draft invoices can be issued.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    if not doc.lines:
+        flash('The invoice has no lines.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+
+    items = []
+    for line in doc.lines:
+        product = Product.query.get(line['product_id']) if line.get('product_id') else None
+        qty = int(line['quantity']) if float(line['quantity']).is_integer() else line['quantity']
+        if product is not None:
+            if product.quantity < qty:
+                flash(f'Not enough stock for {product.name}: {product.quantity} left, {qty:g} on the invoice.', 'error')
+                db.session.rollback()
+                return redirect(url_for('view_document', doc_id=doc.id))
+            product.quantity -= int(qty)
+        items.append({'id': product.id if product else None, 'name': line['description'], 'price': line['price'],
+                      'quantity': qty, 'subtotal': round(line['price'] * qty, 2), 'tax_type': line.get('tax_type') or 'B'})
+
+    customer = doc.customer
+    sale = Sale(total_amount=doc.total, items=json.dumps(items), user_id=current_user.id,
+                customer_name=customer.name if customer else None,
+                customer_phone=customer.phone if customer else None,
+                customer_email=customer.email if customer else None,
+                discount_amount=doc.discount_amount or 0.0,
+                discount_reason=f'Invoice {doc.number}' if doc.discount_amount else None)
+    db.session.add(sale)
+    db.session.flush()
+    shift = current_shift()
+    db.session.add(SaleMeta(sale_id=sale.id, customer_pin=customer.kra_pin if customer else None,
+                            payment_method='credit', customer_id=doc.customer_id,
+                            shift_id=shift.id if shift else None, document_id=doc.id))
+    doc.sale_id = sale.id
+    doc.status = 'unpaid'
+    db.session.commit()
+    emit_event(integrations.SALE_COMPLETED, sale=sale)
+    doc.refresh_payment_status()
+    db.session.commit()
+    flash(f'Invoice {doc.number} issued. Stock updated{" and sent to eTIMS" if sale.kra_invoice_id else ""}.', 'success')
+    return redirect(url_for('view_document', doc_id=doc.id))
+
+
+@app.route('/documents/<int:doc_id>/payments', methods=['POST'])
+@login_required
+def record_document_payment(doc_id):
+    doc = Document.query.get_or_404(doc_id)
+    if doc.doc_type != 'invoice' or doc.status not in ('unpaid', 'partial'):
+        flash('Payments can only be recorded on issued, unpaid invoices.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    amount = _parse_float(request.form.get('amount'), 0) or 0
+    if amount <= 0:
+        flash('Enter the amount received.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    if amount > doc.balance + 0.005:
+        flash(f'That is more than the balance of {doc.balance:.2f}.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    shift = current_shift()
+    doc.payments.append(DocumentPayment(amount=round(amount, 2),
+                                   method=request.form.get('method', 'cash'),
+                                   reference=request.form.get('reference', '').strip() or None,
+                                   paid_on=_parse_date(request.form.get('paid_on'), datetime.date.today()),
+                                   recorded_by=current_user.username, shift_id=shift.id if shift else None))
+    doc.refresh_payment_status()
+    db.session.commit()
+    flash(f'Payment of {amount:.2f} recorded. Balance: {doc.balance:.2f}.', 'success')
+    return redirect(url_for('view_document', doc_id=doc.id))
+
+
+@app.route('/documents/<int:doc_id>/void', methods=['POST'])
+@login_required
+@admin_required
+def void_document(doc_id):
+    doc = Document.query.get_or_404(doc_id)
+    if doc.status == 'void':
+        return redirect(url_for('view_document', doc_id=doc.id))
+    if doc.payments:
+        flash('This invoice has payments recorded. Refund those first.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    reason = request.form.get('reason', '').strip() or 'Voided'
+    sale = doc.sale
+    if sale is not None and not sale.refunded:
+        restock_sale_items(sale, f'Void of {doc.number} ({reason})', current_user.username)
+        sale.refunded = True
+        sale.refunded_at = datetime.datetime.utcnow()
+        sale.refunded_by = current_user.username
+        sale.refund_reason = reason
+    doc.status = 'void'
+    doc.notes = ((doc.notes or '') + f'\nVoided: {reason}').strip()
+    db.session.commit()
+    if sale is not None:
+        emit_event(integrations.SALE_REFUNDED, sale=sale)  # e.g. eTIMS credit note
+    flash(f'{doc.number} voided.', 'info')
+    return redirect(url_for('view_document', doc_id=doc.id))
+
+
+@app.route('/documents/<int:doc_id>/email', methods=['POST'])
+@login_required
+def email_document(doc_id):
+    doc = Document.query.get_or_404(doc_id)
+    recipient = request.form.get('email', '').strip() or (doc.customer.email if doc.customer else None)
+    if not recipient:
+        flash('Enter an email address.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    if not os.environ.get('MAIL_SERVER'):
+        flash('Email is not configured yet. Set MAIL_SERVER, MAIL_USERNAME, MAIL_PASSWORD and MAIL_DEFAULT_SENDER.', 'error')
+        return redirect(url_for('view_document', doc_id=doc.id))
+    try:
+        from flask_mail import Mail, Message
+        for key, default in (('MAIL_SERVER', None), ('MAIL_USERNAME', None), ('MAIL_PASSWORD', None), ('MAIL_DEFAULT_SENDER', None)):
+            app.config.setdefault(key, os.environ.get(key, default))
+        app.config.setdefault('MAIL_PORT', int(os.environ.get('MAIL_PORT', 587)))
+        app.config.setdefault('MAIL_USE_TLS', os.environ.get('MAIL_USE_TLS', 'true').lower() == 'true')
+        settings = BusinessSettings.get()
+        html = render_template('document_view.html', doc=doc, settings=settings, qr_b64=None, children=[],
+                               today=datetime.date.today(), for_email=True)
+        msg = Message(subject=f'{doc.label} {doc.number} from {settings.business_name or "us"}',
+                      recipients=[recipient], html=html)
+        Mail(app).send(msg)
+        if doc.doc_type in ('quotation', 'proforma') and doc.status == 'draft':
+            doc.status = 'sent'
+            db.session.commit()
+        flash(f'{doc.number} emailed to {recipient}.', 'success')
+    except Exception as e:
+        print(f'Error emailing document: {e}')
+        flash('Could not send the email. Check your MAIL_* settings.', 'error')
+    return redirect(url_for('view_document', doc_id=doc.id))
+
+
+@app.route('/reports/debtors')
+@login_required
+@admin_required
+def debtors_report():
+    open_invoices = Document.query.filter(Document.doc_type == 'invoice', Document.status.in_(('unpaid', 'partial'))).all()
+    by_customer = defaultdict(list)
+    for inv in open_invoices:
+        by_customer[inv.customer_id].append(inv)
+    rows = []
+    for customer_id, invoices in by_customer.items():
+        customer = Customer.query.get(customer_id) if customer_id else None
+        rows.append({'customer': customer, 'invoices': invoices, 'aging': aging_buckets(invoices),
+                     'total': round(sum(i.balance for i in invoices), 2)})
+    rows.sort(key=lambda r: r['total'], reverse=True)
+    totals = aging_buckets(open_invoices)
+    return render_template('debtors.html', rows=rows, totals=totals, grand_total=round(sum(totals.values()), 2))
+
+
+# =====================================================================
+# Suppliers & purchase orders
+# =====================================================================
+@app.route('/suppliers', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def list_suppliers():
+    if request.method == 'POST':
+        supplier_id = request.form.get('supplier_id', '')
+        supplier = Supplier.query.get(int(supplier_id)) if supplier_id.isdigit() else Supplier()
+        if not request.form.get('name', '').strip():
+            flash('Supplier name is required.', 'error')
+            return redirect(url_for('list_suppliers'))
+        _fill_contact(supplier, request.form)
+        db.session.add(supplier)
+        db.session.commit()
+        flash(f'Supplier {supplier.name} saved.', 'success')
+        return redirect(url_for('list_suppliers'))
+    suppliers = Supplier.query.order_by(Supplier.name).all()
+    edit = Supplier.query.get(int(request.args['edit'])) if request.args.get('edit', '').isdigit() else None
+    return render_template('suppliers.html', suppliers=suppliers, edit=edit)
+
+
+@app.route('/purchase-orders')
+@login_required
+@admin_required
+def list_purchase_orders():
+    orders = PurchaseOrder.query.order_by(PurchaseOrder.id.desc()).all()
+    low_stock = [p for p in Product.query.order_by(Product.name).all() if p.is_low_stock]
+    return render_template('purchase_orders.html', orders=orders, low_stock=low_stock)
+
+
+@app.route('/purchase-orders/new', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def new_purchase_order():
+    suppliers = Supplier.query.order_by(Supplier.name).all()
+    products = Product.query.order_by(Product.name).all()
+    if request.method == 'POST':
+        supplier_id = request.form.get('supplier_id', '')
+        if not supplier_id.isdigit():
+            flash('Choose a supplier (add one under Suppliers first).', 'error')
+            return redirect(url_for('new_purchase_order'))
+        by_id = {p.id: p for p in products}
+        lines = []
+        for pid, qty, cost in zip(request.form.getlist('line_product_id'), request.form.getlist('line_quantity'),
+                                  request.form.getlist('line_unit_cost')):
+            product = by_id.get(int(pid)) if pid.isdigit() else None
+            quantity = int(_parse_float(qty, 0) or 0)
+            if product is None or quantity <= 0:
+                continue
+            unit_cost = _parse_float(cost)
+            if unit_cost is None:
+                unit_cost = product.cost_price or 0.0
+            lines.append({'product_id': product.id, 'name': product.name, 'quantity': quantity, 'unit_cost': round(unit_cost, 2)})
+        if not lines:
+            flash('Add at least one product.', 'error')
+            return redirect(url_for('new_purchase_order'))
+        po = PurchaseOrder(supplier_id=int(supplier_id), created_by=current_user.username,
+                           expected_on=_parse_date(request.form.get('expected_on')),
+                           notes=request.form.get('notes', '').strip() or None)
+        po.lines = lines
+        db.session.add(po)
+        db.session.commit()
+        flash(f'{po.number} created.', 'success')
+        return redirect(url_for('view_purchase_order', po_id=po.id))
+    prefill = [int(x) for x in request.args.getlist('product_id') if x.isdigit()]
+    if request.args.get('low_stock'):
+        prefill = [p.id for p in products if p.is_low_stock]
+    return render_template('purchase_order_form.html', suppliers=suppliers, products=products, prefill=prefill)
+
+
+@app.route('/purchase-orders/<int:po_id>')
+@login_required
+@admin_required
+def view_purchase_order(po_id):
+    po = PurchaseOrder.query.get_or_404(po_id)
+    return render_template('purchase_order_view.html', po=po, settings=BusinessSettings.get())
+
+
+@app.route('/purchase-orders/<int:po_id>/receive', methods=['POST'])
+@login_required
+@admin_required
+def receive_purchase_order(po_id):
+    po = PurchaseOrder.query.get_or_404(po_id)
+    if po.status != 'ordered':
+        flash('Only open purchase orders can be received.', 'error')
+        return redirect(url_for('view_purchase_order', po_id=po.id))
+    received = {k[len('received_'):]: v for k, v in request.form.items() if k.startswith('received_')}
+    lines = po.lines
+    for idx, line in enumerate(lines):
+        qty = int(_parse_float(received.get(str(idx)), line['quantity']) or 0)
+        line['received'] = qty
+        product = Product.query.get(line['product_id'])
+        if product is None or qty <= 0:
+            continue
+        previous = product.quantity
+        product.quantity += qty
+        if line.get('unit_cost'):
+            product.cost_price = line['unit_cost']
+        db.session.add(StockLog(product_id=product.id, quantity_added=qty, previous_quantity=previous,
+                                new_quantity=product.quantity, note=f'Received {po.number} from {po.supplier.name}',
+                                restocked_by=current_user.username))
+    po.lines = lines
+    po.status = 'received'
+    po.received_at = datetime.datetime.utcnow()
+    po.received_by = current_user.username
+    po.supplier_invoice_no = request.form.get('supplier_invoice_no', '').strip() or None
+    db.session.commit()
+    flash(f'{po.number} received and stock updated.', 'success')
+    return redirect(url_for('view_purchase_order', po_id=po.id))
+
+
+@app.route('/purchase-orders/<int:po_id>/cancel', methods=['POST'])
+@login_required
+@admin_required
+def cancel_purchase_order(po_id):
+    po = PurchaseOrder.query.get_or_404(po_id)
+    if po.status == 'ordered':
+        po.status = 'cancelled'
+        db.session.commit()
+        flash(f'{po.number} cancelled.', 'info')
+    return redirect(url_for('view_purchase_order', po_id=po.id))
 
 # --- Main App Execution ---
 if __name__ == '__main__':

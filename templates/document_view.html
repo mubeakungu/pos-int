@@ -1,0 +1,141 @@
+{% extends "_print_base.html" %}
+{% set sym = settings.currency_symbol or 'KSh' %}
+{% block title %}{{ doc.label }} {{ doc.number }}{% endblock %}
+
+{% block toolbar %}
+<a href="{{ url_for('list_documents', type=doc.doc_type) }}">&larr; {{ doc.label }}s</a>
+<button class="btn-primary" onclick="window.print()">Print / Save PDF</button>
+{% if doc.is_editable %}<a href="{{ url_for('edit_document', doc_id=doc.id) }}">Edit</a>{% endif %}
+{% if doc.doc_type == 'quotation' %}
+    {% if doc.status in ('draft',) %}<form method="post" action="{{ url_for('set_document_status', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="sent"><button>Mark sent</button></form>{% endif %}
+    {% if doc.status in ('draft', 'sent', 'declined') %}<form method="post" action="{{ url_for('set_document_status', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="accepted"><button>Mark accepted</button></form>{% endif %}
+    {% if doc.status in ('draft', 'sent', 'accepted') %}<form method="post" action="{{ url_for('set_document_status', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button>Mark declined</button></form>{% endif %}
+{% endif %}
+{% if doc.doc_type == 'proforma' and doc.status == 'draft' %}
+    <form method="post" action="{{ url_for('set_document_status', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="sent"><button>Mark sent</button></form>
+{% endif %}
+{% if doc.doc_type == 'quotation' and doc.status not in ('declined', 'converted') %}
+    <form method="post" action="{{ url_for('convert_document', doc_id=doc.id, target='proforma') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Convert to proforma</button></form>
+{% endif %}
+{% if doc.doc_type in ('quotation', 'proforma') and doc.status not in ('declined', 'converted') %}
+    <form method="post" action="{{ url_for('convert_document', doc_id=doc.id, target='invoice') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-primary">Convert to invoice</button></form>
+    <form method="post" action="{{ url_for('document_to_cart', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-green">Sell now at the till</button></form>
+{% endif %}
+{% if doc.doc_type == 'invoice' and doc.status == 'draft' %}
+    <form method="post" action="{{ url_for('issue_invoice', doc_id=doc.id) }}" onsubmit="return confirm('Issue this invoice? Stock will be deducted and it will be sent to eTIMS if enabled.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-green">Issue invoice</button></form>
+{% endif %}
+<form method="post" action="{{ url_for('duplicate_document', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Duplicate</button></form>
+{% if doc.customer %}<a href="{{ url_for('view_customer', customer_id=doc.customer.id) }}">Customer</a>{% endif %}
+{% endblock %}
+
+{% block page %}
+<div class="head">
+    {% include "_letterhead.html" %}
+    <div class="doc-title">
+        <h2>{{ doc.label }}</h2>
+        <div style="font-size:15px;font-weight:bold">{{ doc.number }}</div>
+        <div style="margin-top:6px"><span class="badge {{ doc.display_status }}">{{ doc.display_status }}</span></div>
+    </div>
+</div>
+
+<div class="meta">
+    <div>
+        <div class="muted" style="font-size:11px;text-transform:uppercase">{{ 'Bill to' if doc.doc_type == 'invoice' else 'Prepared for' }}</div>
+        {% if doc.customer %}
+        <div style="font-weight:bold;font-size:14px">{{ doc.customer.name }}</div>
+        {% if doc.customer.address %}<div>{{ doc.customer.address }}</div>{% endif %}
+        {% if doc.customer.phone %}<div>{{ doc.customer.phone }}</div>{% endif %}
+        {% if doc.customer.email %}<div>{{ doc.customer.email }}</div>{% endif %}
+        {% if doc.customer.kra_pin %}<div>KRA PIN: {{ doc.customer.kra_pin }}</div>{% endif %}
+        {% else %}<div class="muted">Walk-in customer</div>{% endif %}
+    </div>
+    <table>
+        <tr><td class="muted">Date</td><td>{{ doc.issue_date.strftime('%d %b %Y') }}</td></tr>
+        {% if doc.valid_until and doc.doc_type != 'invoice' %}<tr><td class="muted">Valid until</td><td>{{ doc.valid_until.strftime('%d %b %Y') }}</td></tr>{% endif %}
+        {% if doc.due_date and doc.doc_type == 'invoice' %}<tr><td class="muted">Due date</td><td>{{ doc.due_date.strftime('%d %b %Y') }}</td></tr>{% endif %}
+        {% if doc.source %}<tr><td class="muted">Ref</td><td>{{ doc.source.number }}</td></tr>{% endif %}
+        {% if doc.sale and doc.sale.kra_invoice_id %}<tr><td class="muted">eTIMS no.</td><td>{{ doc.sale.kra_invoice_id }}</td></tr>{% endif %}
+    </table>
+</div>
+
+<table class="lines">
+    <thead><tr><th style="width:28px">#</th><th>Description</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">VAT</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+        {% for line in doc.lines %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ line.description }}</td>
+            <td class="num">{{ '%g' % line.quantity }}</td>
+            <td class="num">{{ '{:,.2f}'.format(line.price) }}</td>
+            <td class="num">{{ line.tax_type }}</td>
+            <td class="num">{{ '{:,.2f}'.format(line.quantity * line.price) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<table class="totals">
+    <tr><td>Subtotal</td><td class="num">{{ sym }} {{ '{:,.2f}'.format(doc.subtotal) }}</td></tr>
+    {% if doc.discount_amount %}<tr><td>Discount</td><td class="num">-{{ sym }} {{ '{:,.2f}'.format(doc.discount_amount) }}</td></tr>{% endif %}
+    <tr class="grand"><td>Total</td><td class="num">{{ sym }} {{ '{:,.2f}'.format(doc.total) }}</td></tr>
+    {% for code, t in doc.tax_breakdown.items() if t.tax %}
+    <tr class="muted"><td>Incl. VAT {{ '%g' % t.rate }}% ({{ code }})</td><td class="num">{{ '{:,.2f}'.format(t.tax) }}</td></tr>
+    {% endfor %}
+    {% if doc.doc_type == 'invoice' and doc.status not in ('draft', 'void') %}
+    <tr><td>Paid</td><td class="num">{{ sym }} {{ '{:,.2f}'.format(doc.amount_paid) }}</td></tr>
+    <tr class="grand"><td>Balance due</td><td class="num">{{ sym }} {{ '{:,.2f}'.format(doc.balance) }}</td></tr>
+    {% endif %}
+</table>
+
+{% if doc.payments %}
+<div class="section">
+    <h3>Payments received</h3>
+    <table class="lines">
+        <thead><tr><th>Date</th><th>Method</th><th>Reference</th><th class="num">Amount</th></tr></thead>
+        <tbody>{% for p in doc.payments %}<tr><td>{{ p.paid_on.strftime('%d %b %Y') }}</td><td>{{ p.method|capitalize }}</td><td>{{ p.reference or '' }}</td><td class="num">{{ '{:,.2f}'.format(p.amount) }}</td></tr>{% endfor %}</tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if doc.notes %}<div class="section"><h3>Notes</h3><div class="pre">{{ doc.notes }}</div></div>{% endif %}
+{% if settings.bank_details and doc.doc_type in ('invoice', 'proforma') %}<div class="section"><h3>Payment details</h3><div class="pre">{{ settings.bank_details }}{% if settings.mpesa_till_number %}
+M-Pesa Buy Goods Till: {{ settings.mpesa_till_number }}{% elif settings.mpesa_paybill_number %}
+M-Pesa Paybill: {{ settings.mpesa_paybill_number }}, Account: {{ doc.number }}{% endif %}</div></div>
+{% elif doc.doc_type in ('invoice', 'proforma') and (settings.mpesa_till_number or settings.mpesa_paybill_number) %}
+<div class="section"><h3>Payment details</h3><div>{% if settings.mpesa_till_number %}M-Pesa Buy Goods Till: {{ settings.mpesa_till_number }}{% else %}M-Pesa Paybill: {{ settings.mpesa_paybill_number }}, Account: {{ doc.number }}{% endif %}</div></div>
+{% endif %}
+{% if doc.terms %}<div class="section"><h3>Terms &amp; conditions</h3><div class="pre muted">{{ doc.terms }}</div></div>{% endif %}
+{% if qr_b64 %}<div class="section" style="text-align:right"><img src="data:image/png;base64,{{ qr_b64 }}" alt="KRA QR" style="width:90px"><div class="muted" style="font-size:10px">Scan to verify with KRA</div></div>{% endif %}
+{% endblock %}
+
+{% block panels %}
+{% if doc.doc_type == 'invoice' and doc.status in ('unpaid', 'partial') %}
+<div class="panel">
+    <strong>Record a payment</strong>
+    <form method="post" action="{{ url_for('record_document_payment', doc_id=doc.id) }}" class="row" style="margin-top:8px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div><label>Amount</label><input type="number" step="0.01" min="0.01" name="amount" value="{{ '%.2f' % doc.balance }}" required></div>
+        <div><label>Method</label><select name="method"><option value="cash">Cash</option><option value="mpesa">M-Pesa</option><option value="bank">Bank transfer</option><option value="cheque">Cheque</option><option value="card">Card</option></select></div>
+        <div><label>Reference</label><input type="text" name="reference" placeholder="e.g. QAB12CD34"></div>
+        <div><label>Date</label><input type="date" name="paid_on" value="{{ today.isoformat() }}"></div>
+        <button class="btn btn-green">Save payment</button>
+    </form>
+</div>
+{% endif %}
+<div class="panel">
+    <form method="post" action="{{ url_for('email_document', doc_id=doc.id) }}" class="row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div><label>Email to</label><input type="email" name="email" value="{{ doc.customer.email if doc.customer and doc.customer.email else '' }}" placeholder="customer@example.com"></div>
+        <button class="btn">Email {{ doc.label|lower }}</button>
+    </form>
+    {% if children %}<p class="muted" style="margin:8px 0 0">Converted to: {% for c in children %}<a href="{{ url_for('view_document', doc_id=c.id) }}">{{ c.number }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+    {% if doc.sale and doc.doc_type != 'invoice' %}<p class="muted" style="margin:8px 0 0">Sold at the till: <a href="{{ url_for('view_receipt', sale_id=doc.sale.id) }}">receipt #{{ doc.sale.id }}</a></p>{% endif %}
+    {% if doc.doc_type == 'invoice' and doc.status in ('unpaid', 'draft') and current_user.is_admin %}
+    <form method="post" action="{{ url_for('void_document', doc_id=doc.id) }}" class="row" style="margin-top:8px" onsubmit="return confirm('Void this invoice? Stock is returned and a credit note is sent to eTIMS.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div><label>Void reason</label><input type="text" name="reason" placeholder="e.g. Customer cancelled order"></div>
+        <button class="btn btn-red">Void invoice</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

@@ -30,9 +30,10 @@
                     <input type="text" id="barcode" name="barcode" placeholder="Scan or type barcode" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
                     <p class="text-xs text-gray-400 mt-1">Lets you scan this product straight into a sale. Leave blank if it doesn't have one yet — you can add or print one later.</p>
                 </div>
+                {% with product=None %}{% include "_product_extra_fields.html" %}{% endwith %}
                 <div>
-                    <label for="image" class="block text-sm font-medium text-gray-700">Product Image</label>
-                    <input type="file" id="image" name="image" accept="image/*" required class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all duration-300">
+                    <label for="image" class="block text-sm font-medium text-gray-700">Product Image (optional)</label>
+                    <input type="file" id="image" name="image" accept="image/*" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all duration-300">
                 </div>
                 <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-full hover:bg-blue-700 transition-colors duration-300">
                     Add Product
@@ -49,6 +50,7 @@
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -75,6 +77,7 @@
 
                             <!-- Product Details -->
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ product.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ product.category or '' }}{% if product.tax_type and product.tax_type != 'B' %} <span class="text-xs text-gray-400">({{ product.tax_type }})</span>{% endif %}</td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ currency_symbol }} {{ "%.2f"|format(product.price) }}</td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm {{ 'text-red-600 font-semibold' if product.is_low_stock else 'text-gray-500' }}">{{ product.quantity }}</td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm">

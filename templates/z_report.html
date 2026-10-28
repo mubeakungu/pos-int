@@ -1,0 +1,45 @@
+{% extends "_print_base.html" %}
+{% set sym = settings.currency_symbol or 'KSh' %}
+{% block title %}{{ title }}{% endblock %}
+{% block toolbar %}
+<a href="{{ url_for('my_shift') }}">&larr; Shifts</a>
+<button class="btn-primary" onclick="window.print()">Print</button>
+{% if period %}
+<form method="get" style="display:inline-flex;gap:6px;align-items:center"><input type="date" name="date" value="{{ period.isoformat() }}" style="padding:5px;border:1px solid #d1d5db;border-radius:6px"><button>Show</button></form>
+{% endif %}
+{% endblock %}
+{% block page %}
+<div style="max-width:90mm;margin:0 auto">
+    <div style="text-align:center">
+        <div style="font-weight:bold;font-size:15px">{{ settings.business_name or 'Your Business Name' }}</div>
+        {% if settings.kra_pin %}<div>PIN: {{ settings.kra_pin }}</div>{% endif %}
+        <div style="font-weight:bold;margin-top:8px;font-size:15px">{% if shift and shift.is_open %}X REPORT (shift still open){% else %}Z REPORT{% endif %}</div>
+        <div class="muted">{{ title }}</div>
+        {% if shift %}<div class="muted">{{ shift.user.username }} &middot; {{ shift.opened_at.strftime('%d %b %Y %H:%M') }}{% if shift.closed_at %} to {{ shift.closed_at.strftime('%H:%M') }}{% endif %} UTC</div>{% endif %}
+    </div>
+    <table class="totals" style="width:100%">
+        <tr><td>Transactions</td><td class="num">{{ summary.transactions }}</td></tr>
+        <tr><td>Gross sales</td><td class="num">{{ '{:,.2f}'.format(summary.gross) }}</td></tr>
+        <tr><td>Discounts</td><td class="num">-{{ '{:,.2f}'.format(summary.discounts) }}</td></tr>
+        <tr class="grand"><td>Net sales</td><td class="num">{{ sym }} {{ '{:,.2f}'.format(summary.net) }}</td></tr>
+        <tr><td colspan="2" style="padding-top:10px;font-weight:bold">Takings by payment method</td></tr>
+        {% for m, amt in summary.by_method.items() %}<tr><td>{{ 'M-Pesa' if m == 'mpesa' else m|capitalize }}</td><td class="num">{{ '{:,.2f}'.format(amt) }}</td></tr>{% else %}<tr><td class="muted" colspan="2">No payments</td></tr>{% endfor %}
+        <tr><td>Refunds</td><td class="num">-{{ '{:,.2f}'.format(summary.refunds) }}</td></tr>
+        {% if summary.invoice_collections %}
+        <tr><td colspan="2" style="padding-top:10px;font-weight:bold">Invoice payments collected</td></tr>
+        {% for m, amt in summary.invoice_by_method.items() %}<tr><td>{{ 'M-Pesa' if m == 'mpesa' else m|capitalize }}</td><td class="num">{{ '{:,.2f}'.format(amt) }}</td></tr>{% endfor %}
+        {% endif %}
+        <tr><td colspan="2" style="padding-top:10px;font-weight:bold">Cash drawer</td></tr>
+        <tr><td>Opening float</td><td class="num">{{ '{:,.2f}'.format(summary.opening_float) }}</td></tr>
+        <tr class="grand"><td>Cash expected</td><td class="num">{{ '{:,.2f}'.format(summary.expected_cash) }}</td></tr>
+        {% if shift and shift.counted_cash is not none %}
+        <tr><td>Cash counted</td><td class="num">{{ '{:,.2f}'.format(shift.counted_cash) }}</td></tr>
+        {% set diff = shift.counted_cash - summary.expected_cash %}
+        <tr class="grand"><td>{{ 'Over' if diff >= 0 else 'Short' }}</td><td class="num" style="color:{{ '#166534' if diff >= -0.005 else '#991b1b' }}">{{ '{:+,.2f}'.format(diff) }}</td></tr>
+        {% endif %}
+    </table>
+    {% if shifts %}<div class="section"><h3>Shifts</h3>{% for s in shifts %}<div>#{{ s.id }} {{ s.user.username }}: float {{ '{:,.2f}'.format(s.opening_float) }}{% if s.counted_cash is not none %}, counted {{ '{:,.2f}'.format(s.counted_cash) }}{% else %} (open){% endif %}</div>{% endfor %}</div>{% endif %}
+    {% if shift and shift.notes %}<div class="section"><h3>Notes</h3><div>{{ shift.notes }}</div></div>{% endif %}
+
+</div>
+{% endblock %}

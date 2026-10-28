@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="space-y-6">
+    <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
+        <div class="flex flex-col md:flex-row justify-between gap-4">
+            <div>
+                <a href="{{ url_for('list_customers') }}" class="text-sm text-blue-600 hover:underline">&larr; Customers</a>
+                <h2 class="text-2xl font-bold text-gray-800 mt-1">{{ customer.name }}</h2>
+                <p class="text-gray-500 text-sm">{{ customer.phone or '' }}{% if customer.email %} &middot; {{ customer.email }}{% endif %}{% if customer.kra_pin %} &middot; PIN {{ customer.kra_pin }}{% endif %}</p>
+            </div>
+            <div class="flex gap-6 text-center">
+                <div><div class="text-xs text-gray-500 uppercase">Spent at till</div><div class="text-xl font-bold text-gray-800">{{ currency_symbol }} {{ '{:,.2f}'.format(total_spent) }}</div></div>
+                <div><div class="text-xs text-gray-500 uppercase">Owes</div><div class="text-xl font-bold {{ 'text-red-600' if balance > 0 else 'text-green-600' }}">{{ currency_symbol }} {{ '{:,.2f}'.format(balance) }}</div>
+                    {% if customer.credit_limit %}<div class="text-xs text-gray-400">limit {{ '{:,.0f}'.format(customer.credit_limit) }}</div>{% endif %}</div>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-4">
+            <a href="{{ url_for('new_document', type='quotation', customer_id=customer.id) }}" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-semibold">New quotation</a>
+            <a href="{{ url_for('new_document', type='proforma', customer_id=customer.id) }}" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-semibold">New proforma</a>
+            <a href="{{ url_for('new_document', type='invoice', customer_id=customer.id) }}" class="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-full text-sm font-semibold">New invoice</a>
+            <a href="{{ url_for('customer_statement', customer_id=customer.id) }}" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-semibold">Statement</a>
+        </div>
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-6">
+        <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200 lg:w-1/2">
+            <h3 class="text-lg font-bold text-gray-800 mb-3">Quotations &amp; invoices</h3>
+            <table class="min-w-full text-sm divide-y divide-gray-100">
+                {% for d in documents %}
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='{{ url_for('view_document', doc_id=d.id) }}'">
+                    <td class="py-2 font-semibold text-blue-700">{{ d.number }}</td>
+                    <td class="py-2 text-gray-500">{{ d.issue_date.strftime('%d %b %Y') }}</td>
+                    <td class="py-2 text-right">{{ '{:,.2f}'.format(d.total) }}</td>
+                    <td class="py-2 pl-3 text-xs uppercase font-bold {{ 'text-red-600' if d.display_status in ('overdue', 'unpaid') else 'text-gray-500' }}">{{ d.display_status }}</td>
+                </tr>
+                {% else %}<tr><td class="py-6 text-center text-gray-400">None yet.</td></tr>{% endfor %}
+            </table>
+        </div>
+        <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200 lg:w-1/2">
+            <h3 class="text-lg font-bold text-gray-800 mb-3">Till purchases</h3>
+            <table class="min-w-full text-sm divide-y divide-gray-100">
+                {% for s in sales %}
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='{{ url_for('view_receipt', sale_id=s.id) }}'">
+                    <td class="py-2 font-semibold text-blue-700">#{{ s.id }}</td>
+                    <td class="py-2 text-gray-500">{{ s.timestamp.strftime('%d %b %Y %H:%M') }}</td>
+                    <td class="py-2 text-right">{{ '{:,.2f}'.format(s.total_amount) }}</td>
+                    <td class="py-2 pl-3 text-xs text-gray-500">{{ 'refunded' if s.refunded else '' }}</td>
+                </tr>
+                {% else %}<tr><td class="py-6 text-center text-gray-400">None yet.</td></tr>{% endfor %}
+            </table>
+        </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
+        <h3 class="text-lg font-bold text-gray-800 mb-3">Edit details</h3>
+        <form method="post" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% with obj=customer, with_credit=True %}{% include "_contact_fields.html" %}{% endwith %}
+            <button class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-full hover:bg-blue-700">Save</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

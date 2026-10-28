@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-200">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div class="flex flex-wrap gap-2">
+            {% for t, l in [('quotation', 'Quotations'), ('proforma', 'Proformas'), ('invoice', 'Invoices')] %}
+            <a href="{{ url_for('list_documents', type=t) }}" class="px-4 py-2 rounded-full text-sm font-semibold {{ 'bg-blue-600 text-white' if t == doc_type else 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">{{ l }}</a>
+            {% endfor %}
+        </div>
+        <a href="{{ url_for('new_document', type=doc_type) }}" class="bg-green-600 text-white font-semibold py-2 px-5 rounded-full hover:bg-green-700 text-center">+ New {{ label|lower }}</a>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-4 text-sm">
+        <span class="text-gray-500">Show:</span>
+        {% set statuses = {'quotation': ['draft', 'sent', 'accepted', 'declined', 'converted'], 'proforma': ['draft', 'sent', 'converted'], 'invoice': ['draft', 'unpaid', 'partial', 'overdue', 'paid', 'void']}[doc_type] %}
+        <a href="{{ url_for('list_documents', type=doc_type) }}" class="{{ 'font-bold text-blue-700' if not status else 'text-blue-600 hover:underline' }}">all</a>
+        {% for s in statuses %}<a href="{{ url_for('list_documents', type=doc_type, status=s) }}" class="{{ 'font-bold text-blue-700' if status == s else 'text-blue-600 hover:underline' }}">{{ s }}</a>{% endfor %}
+        {% if doc_type == 'invoice' %}<span class="ml-auto text-gray-700">Outstanding: <strong>{{ currency_symbol }} {{ '{:,.2f}'.format(outstanding) }}</strong> &middot; <a href="{{ url_for('debtors_report') }}" class="text-blue-600 hover:underline">Debtors report</a></span>{% endif %}
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Number</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ 'Due' if doc_type == 'invoice' else 'Valid until' }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                    {% if doc_type == 'invoice' %}<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>{% endif %}
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for d in docs %}
+                {% set st = d.display_status %}
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='{{ url_for('view_document', doc_id=d.id) }}'">
+                    <td class="px-4 py-3 font-semibold text-blue-700">{{ d.number }}</td>
+                    <td class="px-4 py-3">{{ d.customer.name if d.customer else 'Walk-in' }}</td>
+                    <td class="px-4 py-3 text-gray-500">{{ d.issue_date.strftime('%d %b %Y') }}</td>
+                    <td class="px-4 py-3 text-gray-500">{{ (d.due_date if doc_type == 'invoice' else d.valid_until).strftime('%d %b %Y') if (d.due_date if doc_type == 'invoice' else d.valid_until) else '' }}</td>
+                    <td class="px-4 py-3 text-right">{{ '{:,.2f}'.format(d.total) }}</td>
+                    {% if doc_type == 'invoice' %}<td class="px-4 py-3 text-right font-semibold">{{ '{:,.2f}'.format(d.balance) if d.status not in ('draft', 'void') else '' }}</td>{% endif %}
+                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-bold uppercase
+                        {% if st in ('paid', 'accepted') %}bg-green-100 text-green-800{% elif st in ('unpaid', 'overdue', 'declined', 'void') %}bg-red-100 text-red-800{% elif st in ('partial', 'sent') %}bg-yellow-100 text-yellow-800{% elif st == 'converted' %}bg-indigo-100 text-indigo-800{% else %}bg-gray-100 text-gray-700{% endif %}">{{ st }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="px-4 py-10 text-center text-gray-400">No {{ label|lower }}s yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

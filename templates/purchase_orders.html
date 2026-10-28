@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="space-y-6">
+    {% if low_stock %}
+    <div class="bg-yellow-50 border border-yellow-200 p-4 rounded-2xl flex flex-col md:flex-row justify-between gap-3 items-center">
+        <div class="text-sm text-yellow-900"><strong>{{ low_stock|length }} product{{ 's' if low_stock|length != 1 }} low on stock:</strong> {{ low_stock|map(attribute='name')|join(', ') }}</div>
+        <a href="{{ url_for('new_purchase_order', low_stock=1) }}" class="bg-yellow-600 text-white text-sm font-semibold py-2 px-4 rounded-full hover:bg-yellow-700 whitespace-nowrap">Order these</a>
+    </div>
+    {% endif %}
+    <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-200">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-gray-800">Purchase Orders</h2>
+            <div class="flex gap-2"><a href="{{ url_for('list_suppliers') }}" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-semibold">Suppliers</a>
+            <a href="{{ url_for('new_purchase_order') }}" class="bg-green-600 text-white hover:bg-green-700 px-4 py-2 rounded-full text-sm font-semibold">+ New order</a></div>
+        </div>
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs text-gray-500 uppercase">Order</th><th class="px-4 py-3 text-left text-xs text-gray-500 uppercase">Supplier</th><th class="px-4 py-3 text-left text-xs text-gray-500 uppercase">Created</th><th class="px-4 py-3 text-right text-xs text-gray-500 uppercase">Total</th><th class="px-4 py-3 text-left text-xs text-gray-500 uppercase">Status</th></tr></thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for po in orders %}
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='{{ url_for('view_purchase_order', po_id=po.id) }}'">
+                    <td class="px-4 py-3 font-semibold text-blue-700">{{ po.number }}</td><td class="px-4 py-3">{{ po.supplier.name }}</td>
+                    <td class="px-4 py-3 text-gray-500">{{ po.created_at.strftime('%d %b %Y') }}</td><td class="px-4 py-3 text-right">{{ '{:,.2f}'.format(po.total) }}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-bold uppercase {{ 'bg-green-100 text-green-800' if po.status == 'received' else 'bg-red-100 text-red-800' if po.status == 'cancelled' else 'bg-yellow-100 text-yellow-800' }}">{{ po.status }}</span></td>
+                </tr>
+                {% else %}<tr><td colspan="5" class="px-4 py-10 text-center text-gray-400">No purchase orders yet.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

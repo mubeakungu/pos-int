@@ -1,6 +1,16 @@
 # pos_system
 
-A Flask point-of-sale for Kenyan shops: products and stock, barcode checkout, discounts, receipts with QR codes, refunds, reports, users, and a pluggable integration layer for KRA eTIMS, M-Pesa and any other API.
+A Flask point-of-sale and invoicing system for Kenyan businesses.
+
+**Features**
+- **Till:** barcode checkout, discounts, cash tendered and change, split payments (cash plus M-Pesa), thermal 80mm receipts with an eTIMS QR code, refunds, and email/SMS receipts
+- **Quotations → proforma invoices → invoices**, each with its own numbering (QUO-/PRO-/INV-). Documents print to A4 or PDF and can be emailed. A quote or proforma can be converted with one click, or sold straight at the till.
+- **Credit invoices:** issuing an invoice deducts stock and sends it to eTIMS. You can record part payments (cash, M-Pesa, bank, cheque or card), and invoices are tracked as unpaid, partial, paid or overdue. Voiding an invoice restocks the items and sends an eTIMS credit note.
+- **Customers:** contact details, KRA PIN, credit limit, purchase history, statements with ageing, and a debtors report
+- **Shifts:** an opening float, cash-up with over/short, a Z report per shift, and an end-of-day report
+- **Stock:** categories, VAT type per product (16%, 8%, exempt, zero-rated, non-VAT), cost prices, low-stock alerts, barcode labels, suppliers, and purchase orders that restock and update costs when received
+- **Integrations:** KRA eTIMS, M-Pesa Daraja, and any other API via webhooks or plugins (see below)
+- Reports, users and roles, business settings, and a secondary currency
 
 ## Deploying (Render)
 
