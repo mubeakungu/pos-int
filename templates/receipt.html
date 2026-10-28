@@ -290,9 +290,22 @@
         </div>
         {% endif %}
 
+        {% if payments %}
+        <div class="payment-info">
+            {% for p in payments %}
+            <p>Paid by {{ 'M-Pesa' if p.method == 'mpesa' else p.method|capitalize }}{% if p.receipt_number %}: <strong>{{ p.receipt_number }}</strong>{% endif %}{% if p.status != 'paid' %} ({{ p.status }}){% endif %}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <div class="kra-info">
+            {% if meta and meta.customer_pin %}<p>Customer PIN: {{ meta.customer_pin }}</p>{% endif %}
+            {% if kra_invoice_id %}
             <p>KRA Control Unit Invoice ID:</p>
             <p><strong>{{ kra_invoice_id }}</strong></p>
+            {% if meta and meta.fiscal_signature %}<p style="font-size:0.75em">Signature: {{ meta.fiscal_signature }}</p>{% endif %}
+            {% if meta and meta.fiscal_json and '"mock": true' in meta.fiscal_json %}<p style="font-size:0.75em">(test invoice, not sent to KRA)</p>{% endif %}
+            {% endif %}
             <p>Thank you for your purchase!</p>
             {% if qr_code_b64 %}
                 <img src="data:image/png;base64,{{ qr_code_b64 }}" alt="KRA QR Code" class="qr-code">

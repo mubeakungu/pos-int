@@ -1,0 +1,72 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 mx-auto max-w-2xl">
+        <a href="{{ url_for('list_integrations') }}" class="text-sm text-blue-600 hover:underline">&larr; All integrations</a>
+        <h2 class="text-2xl font-bold text-gray-800 mt-2 mb-1">{{ config.name }}</h2>
+        <p class="text-sm text-gray-500 mb-6">{{ adapter.description }}</p>
+
+        {% if instance.missing_settings() %}
+        <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            Outside mock mode this integration needs these environment variables: {{ instance.missing_settings() | join(', ') }}.
+        </div>
+        {% endif %}
+
+        <form method="post" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="flex items-center gap-2">
+                <input type="checkbox" id="enabled" name="enabled" {% if config.enabled %}checked{% endif %} class="rounded border-gray-300">
+                <label for="enabled" class="text-sm font-semibold text-gray-700">Enabled</label>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Display name</label>
+                <input type="text" name="display_name" value="{{ config.name }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2">
+            </div>
+
+            {% for f in fields %}
+            <div>
+                <label for="f-{{ f.name }}" class="block text-sm font-medium text-gray-700">{{ f.label }}</label>
+                {% if f.secret %}
+                <div class="mt-1 p-2 rounded-md border border-dashed border-gray-300 text-sm {% if f.env_set %}text-green-700{% else %}text-gray-500{% endif %}">
+                    {% if f.env_set %}Set from environment variable <code>{{ f.env }}</code>{% else %}Set the environment variable <code>{{ f.env }}</code> on your server{% endif %}
+                </div>
+                {% elif f.type == 'choice' %}
+                <select id="f-{{ f.name }}" name="{{ f.name }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2">
+                    {% for c in f.choices %}<option value="{{ c }}" {% if c == f.value %}selected{% endif %}>{{ c }}</option>{% endfor %}
+                </select>
+                {% elif f.type == 'textarea' %}
+                <textarea id="f-{{ f.name }}" name="{{ f.name }}" rows="4" class="mt-1 block w-full rounded-md border border-gray-300 p-2 font-mono text-sm">{{ f.value }}</textarea>
+                {% elif f.type == 'bool' %}
+                <input type="checkbox" id="f-{{ f.name }}" name="{{ f.name }}" {% if f.value %}checked{% endif %}>
+                {% else %}
+                <input type="text" id="f-{{ f.name }}" name="{{ f.name }}" value="{{ f.value }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2">
+                {% endif %}
+                {% if f.env and not f.secret and f.env_set %}<p class="text-xs text-amber-600 mt-1">Overridden by environment variable {{ f.env }}.</p>{% endif %}
+                {% if f.help %}<p class="text-xs text-gray-400 mt-1">{{ f.help }}</p>{% endif %}
+            </div>
+            {% endfor %}
+
+            {% if callback_url %}
+            <div>
+                <p class="block text-sm font-medium text-gray-700">Callback URL</p>
+                <code class="block mt-1 p-2 bg-gray-50 rounded text-xs break-all">{{ callback_url }}</code>
+                <p class="text-xs text-gray-400 mt-1">Must be a public HTTPS address. Set PUBLIC_BASE_URL if the POS sits behind a proxy.</p>
+            </div>
+            {% endif %}
+
+            <button class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-full hover:bg-blue-700">Save</button>
+        </form>
+
+        <div class="flex flex-wrap gap-2 mt-4">
+            <form method="post" action="{{ url_for('test_integration', key=config.key) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="bg-green-600 text-white text-sm font-semibold py-2 px-4 rounded-full hover:bg-green-700">Test connection</button></form>
+            {% for action, label in actions %}
+            <form method="post" action="{{ url_for('run_integration_action', key=config.key, action=action) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="bg-gray-700 text-white text-sm font-semibold py-2 px-4 rounded-full hover:bg-gray-800">{{ label }}</button></form>
+            {% endfor %}
+            <form method="post" action="{{ url_for('delete_integration', key=config.key) }}" onsubmit="return confirm('Remove this integration? Its activity log is kept.');" class="ml-auto"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="bg-red-500 text-white text-sm font-semibold py-2 px-4 rounded-full hover:bg-red-600">Remove</button></form>
+        </div>
+    </div>
+
+    {% include "_integration_logs.html" %}
+</div>
+{% endblock %}
