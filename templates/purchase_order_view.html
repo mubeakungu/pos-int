@@ -1,0 +1,46 @@
+{% extends "_print_base.html" %}
+{% set sym = settings.currency_symbol or 'KSh' %}
+{% block title %}{{ po.number }}{% endblock %}
+{% block toolbar %}
+<a href="{{ url_for('list_purchase_orders') }}">&larr; Purchase orders</a>
+<button class="btn-primary" onclick="window.print()">Print / Save PDF</button>
+{% if po.status == 'ordered' %}<form method="post" action="{{ url_for('cancel_purchase_order', po_id=po.id) }}" onsubmit="return confirm('Cancel this order?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-red">Cancel order</button></form>{% endif %}
+{% endblock %}
+{% block page %}
+<div class="head">
+    {% include "_letterhead.html" %}
+    <div class="doc-title"><h2>Purchase Order</h2><div style="font-size:15px;font-weight:bold">{{ po.number }}</div><div style="margin-top:6px"><span class="badge {{ po.status }}">{{ po.status }}</span></div></div>
+</div>
+<div class="meta">
+    <div><div class="muted" style="font-size:11px;text-transform:uppercase">Supplier</div><div style="font-weight:bold;font-size:14px">{{ po.supplier.name }}</div>
+        {% if po.supplier.address %}<div>{{ po.supplier.address }}</div>{% endif %}{% if po.supplier.phone %}<div>{{ po.supplier.phone }}</div>{% endif %}{% if po.supplier.email %}<div>{{ po.supplier.email }}</div>{% endif %}</div>
+    <table>
+        <tr><td class="muted">Date</td><td>{{ po.created_at.strftime('%d %b %Y') }}</td></tr>
+        {% if po.expected_on %}<tr><td class="muted">Deliver by</td><td>{{ po.expected_on.strftime('%d %b %Y') }}</td></tr>{% endif %}
+        {% if po.received_at %}<tr><td class="muted">Received</td><td>{{ po.received_at.strftime('%d %b %Y') }} by {{ po.received_by }}</td></tr>{% endif %}
+        {% if po.supplier_invoice_no %}<tr><td class="muted">Supplier inv.</td><td>{{ po.supplier_invoice_no }}</td></tr>{% endif %}
+    </table>
+</div>
+<table class="lines">
+    <thead><tr><th>#</th><th>Item</th><th class="num">Qty ordered</th>{% if po.status == 'received' %}<th class="num">Received</th>{% endif %}<th class="num">Unit cost</th><th class="num">Amount</th></tr></thead>
+    <tbody>{% for l in po.lines %}<tr><td>{{ loop.index }}</td><td>{{ l.name }}</td><td class="num">{{ l.quantity }}</td>{% if po.status == 'received' %}<td class="num">{{ l.received if l.received is defined else l.quantity }}</td>{% endif %}<td class="num">{{ '{:,.2f}'.format(l.unit_cost) }}</td><td class="num">{{ '{:,.2f}'.format(l.quantity * l.unit_cost) }}</td></tr>{% endfor %}</tbody>
+</table>
+<table class="totals"><tr class="grand"><td>Total</td><td class="num">{{ sym }} {{ '{:,.2f}'.format(po.total) }}</td></tr></table>
+{% if po.notes %}<div class="section"><h3>Notes</h3><div class="pre">{{ po.notes }}</div></div>{% endif %}
+{% endblock %}
+{% block panels %}
+{% if po.status == 'ordered' %}
+<div class="panel">
+    <strong>Receive delivery</strong>
+    <p class="muted" style="margin:4px 0 8px">Adjust quantities if the delivery was short. Stock and cost prices update when you save.</p>
+    <form method="post" action="{{ url_for('receive_purchase_order', po_id=po.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row">
+            {% for l in po.lines %}<div><label>{{ l.name }}</label><input type="number" min="0" name="received_{{ loop.index0 }}" value="{{ l.quantity }}" style="width:110px"></div>{% endfor %}
+            <div><label>Supplier invoice no.</label><input type="text" name="supplier_invoice_no"></div>
+            <button class="btn btn-green">Mark received</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

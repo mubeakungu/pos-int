@@ -1,0 +1,7 @@
+<div>
+    <h1>{{ settings.business_name or 'Your Business Name' }}</h1>
+    {% if settings.address %}<div>{{ settings.address }}</div>{% endif %}
+    {% if settings.phone %}<div>Tel: {{ settings.phone }}</div>{% endif %}
+    {% if settings.email %}<div>{{ settings.email }}</div>{% endif %}
+    {% if settings.kra_pin %}<div>KRA PIN: <strong>{{ settings.kra_pin }}</strong></div>{% endif %}
+</div>

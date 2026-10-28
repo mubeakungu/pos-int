@@ -1,6 +1,15 @@
 {% extends "layout.html" %}
 
 {% block content %}
+{% if not open_shift %}
+<div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-900 flex justify-between items-center gap-3">
+    <span>You have no open shift, so these sales won't appear on a Z report.</span>
+    <a href="{{ url_for('my_shift') }}" class="bg-yellow-600 text-white px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap">Open shift</a>
+</div>
+{% endif %}
+{% if cart_document %}
+<div class="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-900">Selling {{ cart_document.label|lower }} <a class="underline font-semibold" href="{{ url_for('view_document', doc_id=cart_document.id) }}">{{ cart_document.number }}</a>{% if cart_document.discount_amount %}. It had a discount of {{ currency_symbol }} {{ '%.2f' % cart_document.discount_amount }}; enter it under Discount{% endif %}.</div>
+{% endif %}
 
 <div class="flex flex-col lg:flex-row gap-8"> <!-- Sales Form --> <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 lg:w-1/3"> <h2 class="text-2xl font-bold text-gray-800 mb-4">New Sale</h2>
 
@@ -35,6 +44,13 @@
         <input type="text" id="discount_reason" name="discount_reason" form="complete-sale-form" placeholder="e.g. Loyalty discount" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
     </div>
     <div class="border-t border-gray-200 pt-2">
+        <label for="customer_id" class="block text-xs font-medium text-gray-600">Saved customer</label>
+        <select id="customer_id" name="customer_id" form="complete-sale-form" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+            <option value="">New / walk-in</option>
+            {% for c in customers %}<option value="{{ c.id }}" data-name="{{ c.name }}" data-phone="{{ c.phone or '' }}" data-email="{{ c.email or '' }}" data-pin="{{ c.kra_pin or '' }}" {% if cart_customer and cart_customer.id == c.id %}selected{% endif %}>{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>{% endfor %}
+        </select>
+    </div>
+    <div>
         <label for="customer_name" class="block text-xs font-medium text-gray-600">Customer Name</label>
         <input type="text" id="customer_name" name="customer_name" form="complete-sale-form" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
     </div>
@@ -52,7 +68,7 @@
         <label for="customer_pin" class="block text-xs font-medium text-gray-600">Customer KRA PIN (for a tax invoice)</label>
         <input type="text" id="customer_pin" name="customer_pin" form="complete-sale-form" placeholder="A000000000X" maxlength="11" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2 uppercase">
     </div>
-    <p class="text-xs text-gray-400">Add a phone/email now to enable one-tap SMS or email receipt delivery later.</p>
+    <p class="text-xs text-gray-400">A new name + phone is saved as a customer automatically.</p>
 </div>
 
 <div class="mb-2">
@@ -64,9 +80,21 @@
         {% endfor %}
     </select>
 </div>
-<div id="payment-phone-wrap" class="hidden mb-2">
-    <label for="payment_phone" class="block text-sm font-medium text-gray-700">Customer phone to send the payment prompt to</label>
-    <input type="tel" id="payment_phone" name="payment_phone" form="complete-sale-form" placeholder="07xx xxx xxx" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+<div id="payment-phone-wrap" class="hidden mb-2 space-y-2">
+    <div>
+        <label for="payment_phone" class="block text-sm font-medium text-gray-700">Customer phone to send the payment prompt to</label>
+        <input type="tel" id="payment_phone" name="payment_phone" form="complete-sale-form" placeholder="07xx xxx xxx" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+    </div>
+    <div>
+        <label for="cash_part" class="block text-xs font-medium text-gray-600">Split: part paid in cash ({{ currency_symbol }}, optional)</label>
+        <input type="number" step="0.01" min="0" id="cash_part" name="cash_part" form="complete-sale-form" placeholder="0.00" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+        <p id="split-hint" class="text-xs text-gray-400 mt-1"></p>
+    </div>
+</div>
+<div class="mb-2">
+    <label for="amount_tendered" class="block text-sm font-medium text-gray-700"><span id="tendered-label">Cash received</span> ({{ currency_symbol }})</label>
+    <input type="number" step="0.01" min="0" id="amount_tendered" name="amount_tendered" form="complete-sale-form" placeholder="optional" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+    <p id="change-due" class="text-sm font-semibold text-green-700 mt-1"></p>
 </div>
 
 <div class="mt-4 flex space-x-2"> <form id="complete-sale-form" action="{{ url_for('complete_sale') }}" method="post" class="flex-grow"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-full hover:bg-blue-700 transition-colors duration-300"> Complete Sale </button> </form> <form action="{{ url_for('cancel_sale') }}" method="post" class="flex-grow"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> <button type="submit" class="w-full bg-gray-400 text-white font-semibold py-2 px-4 rounded-full hover:bg-gray-500 transition-colors duration-300"> Cancel Sale </button> </form> </div> </div>
@@ -119,11 +147,57 @@
             barcodeInput.focus();
         }
 
+        var total = {{ '%.2f' % total }};
+        var discountType = document.getElementById('discount_type');
+        var discountValue = document.getElementById('discount_value');
+        function amountDue() {
+            var v = parseFloat(discountValue.value) || 0;
+            if (discountType.value === 'percent') return total - total * Math.min(v, 100) / 100;
+            if (discountType.value === 'fixed') return total - Math.min(v, total);
+            return total;
+        }
+        function updateCash() {
+            var method = document.getElementById('payment_method').value;
+            var cashPart = parseFloat(document.getElementById('cash_part').value) || 0;
+            var due = amountDue();
+            var cashDue = method === 'cash' ? due : Math.min(cashPart, due);
+            var tendered = parseFloat(document.getElementById('amount_tendered').value) || 0;
+            document.getElementById('split-hint').textContent = (method !== 'cash' && cashPart > 0)
+                ? 'Cash ' + cashDue.toFixed(2) + ' now, ' + (due - cashDue).toFixed(2) + ' by ' + document.getElementById('payment_method').selectedOptions[0].text : '';
+            var out = document.getElementById('change-due');
+            if (tendered && cashDue) {
+                out.textContent = tendered >= cashDue ? 'Change: ' + (tendered - cashDue).toFixed(2) : 'Short by ' + (cashDue - tendered).toFixed(2);
+                out.className = 'text-sm font-semibold mt-1 ' + (tendered >= cashDue ? 'text-green-700' : 'text-red-600');
+            } else { out.textContent = ''; }
+        }
+        ['cash_part', 'amount_tendered', 'discount_value', 'discount_type', 'payment_method'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) { el.addEventListener('input', updateCash); el.addEventListener('change', updateCash); }
+        });
+
+        var customerSelect = document.getElementById('customer_id');
+        if (customerSelect) {
+            var fillCustomer = function () {
+                var opt = customerSelect.selectedOptions[0];
+                if (!opt || !opt.value) return;
+                document.getElementById('customer_name').value = opt.dataset.name;
+                document.getElementById('customer_phone').value = opt.dataset.phone;
+                document.getElementById('customer_email').value = opt.dataset.email;
+                document.getElementById('customer_pin').value = opt.dataset.pin;
+                var pp = document.getElementById('payment_phone');
+                if (pp && !pp.value) pp.value = opt.dataset.phone;
+            };
+            customerSelect.addEventListener('change', fillCustomer);
+            fillCustomer();
+        }
+
         var methodSelect = document.getElementById('payment_method');
         var phoneWrap = document.getElementById('payment-phone-wrap');
         if (methodSelect && phoneWrap) {
             var syncPhone = function () {
                 phoneWrap.classList.toggle('hidden', methodSelect.value === 'cash');
+                document.getElementById('tendered-label').textContent = methodSelect.value === 'cash' ? 'Cash received' : 'Cash received for the cash part';
+                updateCash();
             };
             methodSelect.addEventListener('change', syncPhone);
             syncPhone();

@@ -1,0 +1,20 @@
+<div class="grid grid-cols-2 gap-3">
+    <div>
+        <label for="category" class="block text-sm font-medium text-gray-700">Category</label>
+        <input type="text" id="category" name="category" list="category-list" value="{{ product.category if product else '' }}" placeholder="e.g. Groceries" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2">
+        <datalist id="category-list">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist>
+    </div>
+    <div>
+        <label for="tax_type" class="block text-sm font-medium text-gray-700">VAT</label>
+        <select id="tax_type" name="tax_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2">
+            {% for code, label in tax_types %}
+            <option value="{{ code }}" {% if (product.tax_type if product else 'B') == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+<div>
+    <label for="cost_price" class="block text-sm font-medium text-gray-700">Cost Price ({{ currency_symbol }}, optional)</label>
+    <input type="number" id="cost_price" name="cost_price" step="0.01" min="0" value="{{ product.cost_price if product and product.cost_price is not none else '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2">
+    <p class="text-xs text-gray-400 mt-1">Used for profit reports. Updated automatically when you receive a purchase order.</p>
+</div>

@@ -205,6 +205,7 @@
                 padding: 0;
                 margin: 0;
             }
+            @page { size: 80mm auto; margin: 3mm; }
         }
     </style>
 </head>
@@ -293,12 +294,14 @@
         {% if payments %}
         <div class="payment-info">
             {% for p in payments %}
-            <p>Paid by {{ 'M-Pesa' if p.method == 'mpesa' else p.method|capitalize }}{% if p.receipt_number %}: <strong>{{ p.receipt_number }}</strong>{% endif %}{% if p.status != 'paid' %} ({{ p.status }}){% endif %}</p>
+            <p>{{ 'M-Pesa' if p.method == 'mpesa' else p.method|capitalize }}{% if payments|length > 1 %} {{ currency_symbol }} {{ "%.2f"|format(p.amount) }}{% endif %}{% if p.receipt_number %}: <strong>{{ p.receipt_number }}</strong>{% endif %}{% if p.status != 'paid' %} ({{ p.status }}){% endif %}</p>
+            {% if p.method == 'cash' and p.message and p.message.startswith('Tendered') %}<p>{{ p.message }}</p>{% endif %}
             {% endfor %}
         </div>
         {% endif %}
 
         <div class="kra-info">
+            {% if settings.kra_pin %}<p>Seller PIN: {{ settings.kra_pin }}</p>{% endif %}
             {% if meta and meta.customer_pin %}<p>Customer PIN: {{ meta.customer_pin }}</p>{% endif %}
             {% if kra_invoice_id %}
             <p>KRA Control Unit Invoice ID:</p>

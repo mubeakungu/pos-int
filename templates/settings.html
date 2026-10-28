@@ -20,6 +20,38 @@
                 <input type="text" id="phone" name="phone" value="{{ settings.phone or '' }}" placeholder="+254 7XX XXX XXX" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-300 p-2">
             </div>
 
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label for="kra_pin" class="block text-sm font-medium text-gray-700">Business KRA PIN</label>
+                    <input type="text" id="kra_pin" name="kra_pin" value="{{ settings.kra_pin or '' }}" placeholder="P000000000A" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 uppercase">
+                </div>
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700">Business Email</label>
+                    <input type="email" id="email" name="email" value="{{ settings.email or '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                </div>
+            </div>
+
+            <hr class="my-2">
+            <p class="text-sm font-semibold text-gray-700">Quotations &amp; Invoices</p>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label for="quotation_valid_days" class="block text-sm font-medium text-gray-700">Quotes valid for (days)</label>
+                    <input type="number" min="0" id="quotation_valid_days" name="quotation_valid_days" value="{{ settings.quotation_valid_days or 14 }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                </div>
+                <div>
+                    <label for="invoice_due_days" class="block text-sm font-medium text-gray-700">Invoices due after (days)</label>
+                    <input type="number" min="0" id="invoice_due_days" name="invoice_due_days" value="{{ settings.invoice_due_days or 30 }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                </div>
+            </div>
+            <div>
+                <label for="bank_details" class="block text-sm font-medium text-gray-700">Bank / payment details printed on invoices</label>
+                <textarea id="bank_details" name="bank_details" rows="3" placeholder="Bank: ...&#10;Account name: ...&#10;Account no: ..." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">{{ settings.bank_details or '' }}</textarea>
+            </div>
+            <div>
+                <label for="invoice_terms" class="block text-sm font-medium text-gray-700">Default terms &amp; conditions</label>
+                <textarea id="invoice_terms" name="invoice_terms" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">{{ settings.invoice_terms or '' }}</textarea>
+            </div>
+
             <hr class="my-2">
             <p class="text-sm font-semibold text-gray-700">M-Pesa Payment (choose one)</p>
 

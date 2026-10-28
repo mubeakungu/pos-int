@@ -15,16 +15,14 @@
             <p class="text-4xl font-bold text-blue-600 mt-2">{{ total_items }}</p>
         </div>
         <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200 text-center">
-            <h2 class="text-xl font-semibold text-gray-700">Active Transaction</h2>
-            <p class="text-4xl font-bold text-yellow-600 mt-2">
-                <a href="{{ url_for('process_sales') }}" class="hover:underline">View</a>
-            </p>
+            <h2 class="text-xl font-semibold text-gray-700">Today's Sales</h2>
+            <p class="text-4xl font-bold text-yellow-600 mt-2">{{ currency_symbol }} {{ "{:,.2f}".format(today_sales or 0) }}</p>
+            <a href="{{ url_for('process_sales') }}" class="text-sm text-blue-600 hover:underline">Open the till &rarr;</a>
         </div>
-        <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200 text-center">
-            <h2 class="text-xl font-semibold text-gray-700">Sales History</h2>
-            <p class="text-4xl font-bold text-purple-600 mt-2">
-                <a href="{{ url_for('sales_history') }}" class="hover:underline">View</a>
-            </p>
+        <div class="bg-white p-6 rounded-2xl shadow-lg border {{ 'border-red-300' if overdue_count else 'border-gray-200' }} text-center">
+            <h2 class="text-xl font-semibold text-gray-700">Unpaid Invoices</h2>
+            <p class="text-4xl font-bold text-purple-600 mt-2">{{ currency_symbol }} {{ "{:,.2f}".format(outstanding or 0) }}</p>
+            <a href="{{ url_for('list_documents', type='invoice', status='overdue' if overdue_count else '') }}" class="text-sm {{ 'text-red-600 font-semibold' if overdue_count else 'text-blue-600' }} hover:underline">{{ overdue_count ~ ' overdue' if overdue_count else 'View invoices' }} &rarr;</a>
         </div>
         <div class="bg-white p-6 rounded-2xl shadow-lg border {{ 'border-red-300' if low_stock_products else 'border-gray-200' }} text-center">
             <h2 class="text-xl font-semibold text-gray-700">Low Stock Items</h2>

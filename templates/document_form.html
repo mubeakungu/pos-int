@@ -1,0 +1,144 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-200 max-w-5xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-800 mb-1">{{ 'Edit' if doc.id else 'New' }} {{ doc.label }}{% if doc.number %} {{ doc.number }}{% endif %}</h2>
+    <p class="text-sm text-gray-500 mb-6">Pick stock items or type free-text lines (services, delivery, labour). Prices include VAT.</p>
+
+    <form method="post" id="doc-form" class="space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="type" value="{{ doc.doc_type }}">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700">Customer</label>
+                <select name="customer_id" class="mt-1 block w-full rounded-md border border-gray-300 p-2">
+                    <option value="">Walk-in / no customer</option>
+                    {% for c in customers %}<option value="{{ c.id }}" {% if doc.customer_id == c.id %}selected{% endif %}>{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>{% endfor %}
+                </select>
+                <a href="{{ url_for('list_customers') }}" class="text-xs text-blue-600 hover:underline" target="_blank">+ Add a customer</a>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Date</label>
+                <input type="date" name="issue_date" value="{{ doc.issue_date.isoformat() if doc.issue_date else '' }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2">
+            </div>
+            {% if doc.doc_type == 'invoice' %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Due date</label>
+                <input type="date" name="due_date" value="{{ doc.due_date.isoformat() if doc.due_date else '' }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2">
+            </div>
+            {% else %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Valid until</label>
+                <input type="date" name="valid_until" value="{{ doc.valid_until.isoformat() if doc.valid_until else '' }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2">
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm" id="lines-table">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="p-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                        <th class="p-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                        <th class="p-2 text-left text-xs font-medium text-gray-500 uppercase w-20">Qty</th>
+                        <th class="p-2 text-left text-xs font-medium text-gray-500 uppercase w-28">Unit price</th>
+                        <th class="p-2 text-left text-xs font-medium text-gray-500 uppercase w-28">VAT</th>
+                        <th class="p-2 text-right text-xs font-medium text-gray-500 uppercase w-28">Amount</th>
+                        <th class="p-2"></th>
+                    </tr>
+                </thead>
+                <tbody id="lines-body">
+                    {% set rows = doc.lines if doc.lines else [{}] %}
+                    {% for line in rows %}
+                    <tr class="line-row border-b border-gray-100">
+                        <td class="p-1">
+                            <select name="line_product_id" class="line-product w-44 rounded-md border border-gray-300 p-2">
+                                <option value="">(free text)</option>
+                                {% for p in products %}<option value="{{ p.id }}" data-name="{{ p.name }}" data-price="{{ p.price }}" data-tax="{{ p.tax_type or 'B' }}" {% if line.product_id == p.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+                            </select>
+                        </td>
+                        <td class="p-1"><input type="text" name="line_description" value="{{ line.description or '' }}" class="line-desc w-full min-w-[12rem] rounded-md border border-gray-300 p-2"></td>
+                        <td class="p-1"><input type="number" step="any" min="0" name="line_quantity" value="{{ '%g' % line.quantity if line.quantity else 1 }}" class="line-qty w-20 rounded-md border border-gray-300 p-2"></td>
+                        <td class="p-1"><input type="number" step="0.01" min="0" name="line_price" value="{{ line.price if line.price is defined else '' }}" class="line-price w-28 rounded-md border border-gray-300 p-2"></td>
+                        <td class="p-1">
+                            <select name="line_tax_type" class="line-tax w-28 rounded-md border border-gray-300 p-2">
+                                {% for code, label in tax_types %}<option value="{{ code }}" {% if (line.tax_type or 'B') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                            </select>
+                        </td>
+                        <td class="p-1 text-right line-amount font-semibold">0.00</td>
+                        <td class="p-1"><button type="button" class="remove-line text-red-500 text-lg px-2" title="Remove">&times;</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <button type="button" id="add-line" class="mt-2 text-sm text-blue-600 hover:underline">+ Add line</button>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-6">
+            <div class="flex-grow space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Notes (shown on the document)</label>
+                    <textarea name="notes" rows="3" class="mt-1 block w-full rounded-md border border-gray-300 p-2">{{ doc.notes or '' }}</textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Terms &amp; conditions</label>
+                    <textarea name="terms" rows="3" class="mt-1 block w-full rounded-md border border-gray-300 p-2">{{ doc.terms or '' }}</textarea>
+                </div>
+            </div>
+            <div class="md:w-72 space-y-2 text-sm">
+                <div class="flex justify-between"><span>Subtotal</span><span id="subtotal" class="font-semibold">0.00</span></div>
+                <div class="flex justify-between items-center"><span>Discount ({{ currency_symbol }})</span><input type="number" step="0.01" min="0" name="discount_amount" id="discount" value="{{ doc.discount_amount or '' }}" class="w-28 rounded-md border border-gray-300 p-1 text-right"></div>
+                <div class="flex justify-between text-lg font-bold border-t pt-2"><span>Total</span><span id="total">0.00</span></div>
+            </div>
+        </div>
+
+        <div class="flex gap-3">
+            <button class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-full hover:bg-blue-700">Save draft</button>
+            <a href="{{ url_for('view_document', doc_id=doc.id) if doc.id else url_for('list_documents', type=doc.doc_type) }}" class="bg-gray-400 text-white font-semibold py-2 px-6 rounded-full hover:bg-gray-500">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+(function () {
+    var body = document.getElementById('lines-body');
+    function fmt(n) { return (Math.round(n * 100) / 100).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+    function recalc() {
+        var subtotal = 0;
+        body.querySelectorAll('.line-row').forEach(function (row) {
+            var qty = parseFloat(row.querySelector('.line-qty').value) || 0;
+            var price = parseFloat(row.querySelector('.line-price').value) || 0;
+            row.querySelector('.line-amount').textContent = fmt(qty * price);
+            subtotal += qty * price;
+        });
+        var discount = parseFloat(document.getElementById('discount').value) || 0;
+        document.getElementById('subtotal').textContent = fmt(subtotal);
+        document.getElementById('total').textContent = fmt(Math.max(subtotal - discount, 0));
+    }
+    function wire(row) {
+        var sel = row.querySelector('.line-product');
+        sel.addEventListener('change', function () {
+            var opt = sel.options[sel.selectedIndex];
+            if (opt.dataset.name) {
+                row.querySelector('.line-desc').value = opt.dataset.name;
+                row.querySelector('.line-price').value = opt.dataset.price;
+                row.querySelector('.line-tax').value = opt.dataset.tax;
+            }
+            recalc();
+        });
+        row.querySelector('.remove-line').addEventListener('click', function () {
+            if (body.querySelectorAll('.line-row').length > 1) { row.remove(); } else { row.querySelectorAll('input').forEach(function (i) { i.value = ''; }); }
+            recalc();
+        });
+    }
+    body.querySelectorAll('.line-row').forEach(wire);
+    document.getElementById('add-line').addEventListener('click', function () {
+        var clone = body.querySelector('.line-row').cloneNode(true);
+        clone.querySelectorAll('input').forEach(function (i) { i.value = i.classList.contains('line-qty') ? '1' : ''; });
+        clone.querySelectorAll('select').forEach(function (s) { s.selectedIndex = s.classList.contains('line-tax') ? 0 : 0; });
+        body.appendChild(clone); wire(clone); recalc();
+    });
+    document.getElementById('doc-form').addEventListener('input', recalc);
+    recalc();
+})();
+</script>
+{% endblock %}

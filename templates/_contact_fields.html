@@ -1,0 +1,9 @@
+<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div><label class="block text-sm font-medium text-gray-700">Name *</label><input type="text" name="name" required value="{{ obj.name if obj else '' }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2"></div>
+    <div><label class="block text-sm font-medium text-gray-700">Phone</label><input type="tel" name="phone" value="{{ obj.phone or '' if obj else '' }}" placeholder="07xx xxx xxx" class="mt-1 block w-full rounded-md border border-gray-300 p-2"></div>
+    <div><label class="block text-sm font-medium text-gray-700">Email</label><input type="email" name="email" value="{{ obj.email or '' if obj else '' }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2"></div>
+    <div><label class="block text-sm font-medium text-gray-700">KRA PIN</label><input type="text" name="kra_pin" value="{{ obj.kra_pin or '' if obj else '' }}" maxlength="11" class="mt-1 block w-full rounded-md border border-gray-300 p-2 uppercase"></div>
+    <div class="md:col-span-2"><label class="block text-sm font-medium text-gray-700">Address</label><input type="text" name="address" value="{{ obj.address or '' if obj else '' }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2"></div>
+    {% if with_credit %}<div><label class="block text-sm font-medium text-gray-700">Credit limit ({{ currency_symbol }}, optional)</label><input type="number" step="0.01" min="0" name="credit_limit" value="{{ obj.credit_limit if obj and obj.credit_limit is not none else '' }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2"></div>{% endif %}
+    <div class="{{ '' if with_credit else 'md:col-span-2' }}"><label class="block text-sm font-medium text-gray-700">Notes</label><input type="text" name="notes" value="{{ obj.notes or '' if obj else '' }}" class="mt-1 block w-full rounded-md border border-gray-300 p-2"></div>
+</div>

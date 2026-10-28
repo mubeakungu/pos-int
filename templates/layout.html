@@ -21,19 +21,24 @@
             <a href="/" class="text-3xl font-bold text-gray-800 rounded-lg hover:text-blue-600 transition-colors duration-300 mb-4 md:mb-0">Simple POS</a>
 
             <!-- Navigation Links -->
-            <div class="flex flex-wrap justify-center md:space-x-4 space-x-2">
+            <div class="flex flex-wrap justify-center gap-x-1">
                 {% if current_user.is_authenticated %}
-                <a href="/" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Dashboard</a>
+                {% set nav_cls = "text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium" %}
+                <a href="/" class="{{ nav_cls }}">Dashboard</a>
+                <a href="{{ url_for('process_sales') }}" class="{{ nav_cls }}">Sell</a>
+                <a href="{{ url_for('list_documents', type='invoice') }}" class="{{ nav_cls }}">Quotes &amp; Invoices</a>
+                <a href="{{ url_for('list_customers') }}" class="{{ nav_cls }}">Customers</a>
+                <a href="/history" class="{{ nav_cls }}">History</a>
+                <a href="{{ url_for('my_shift') }}" class="{{ nav_cls }}">Shift{% if open_shift %} <span class="inline-block w-2 h-2 rounded-full bg-green-500 align-middle"></span>{% endif %}</a>
                 {% if current_user.is_admin %}
-                <a href="/products" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Products</a>
+                <a href="/products" class="{{ nav_cls }}">Products</a>
+                <a href="{{ url_for('list_purchase_orders') }}" class="{{ nav_cls }}">Purchases</a>
                 {% endif %}
-                <a href="/sales" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Sales</a>
-                <a href="/history" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Sales History</a>
-                <a href="/reports" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Reports</a>
+                <a href="/reports" class="{{ nav_cls }}">Reports</a>
                 {% if current_user.is_admin %}
-                <a href="/users" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Users</a>
-                <a href="/integrations" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Integrations</a>
-                <a href="/settings" class="text-gray-600 hover:text-blue-600 transition-colors duration-300 p-2 rounded-lg font-medium">Settings</a>
+                <a href="/users" class="{{ nav_cls }}">Users</a>
+                <a href="/integrations" class="{{ nav_cls }}">Integrations</a>
+                <a href="/settings" class="{{ nav_cls }}">Settings</a>
                 {% endif %}
                 <a href="/logout" class="text-gray-600 hover:text-red-600 transition-colors duration-300 p-2 rounded-lg font-medium">Logout</a>
                 {% else %}
@@ -49,7 +54,7 @@
         {% if messages %}
         <div class="mb-4">
             {% for category, message in messages %}
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative" role="alert">
+            <div class="{% if category == 'error' %}bg-red-100 border-red-400 text-red-700{% elif category == 'success' %}bg-green-100 border-green-400 text-green-800{% else %}bg-blue-50 border-blue-300 text-blue-800{% endif %} border px-4 py-3 rounded-lg relative mb-2" role="alert">
                 <span class="block sm:inline">{{ message }}</span>
             </div>
             {% endfor %}
