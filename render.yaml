@@ -1,0 +1,28 @@
+# One-click deploy on Render: New > Blueprint, then pick this repo.
+# Creates the web app plus a Postgres database and wires them together.
+services:
+  - type: web
+    name: pos
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --worker-class gthread "app:app"
+    healthCheckPath: /login
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pos-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_PASSWORD
+        sync: false   # Render asks for this on first deploy
+      - key: PUBLIC_BASE_URL
+        sync: false   # e.g. https://pos-xxxx.onrender.com, needed for M-Pesa callbacks
+      # Add MPESA_* and ETIMS_* keys here (or in the dashboard) when you have them.
+
+databases:
+  - name: pos-db
+    plan: free

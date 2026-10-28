@@ -48,7 +48,25 @@
             <input type="email" id="customer_email" name="customer_email" form="complete-sale-form" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
         </div>
     </div>
+    <div>
+        <label for="customer_pin" class="block text-xs font-medium text-gray-600">Customer KRA PIN (for a tax invoice)</label>
+        <input type="text" id="customer_pin" name="customer_pin" form="complete-sale-form" placeholder="A000000000X" maxlength="11" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2 uppercase">
+    </div>
     <p class="text-xs text-gray-400">Add a phone/email now to enable one-tap SMS or email receipt delivery later.</p>
+</div>
+
+<div class="mb-2">
+    <label for="payment_method" class="block text-sm font-medium text-gray-700">Payment Method</label>
+    <select id="payment_method" name="payment_method" form="complete-sale-form" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+        <option value="cash">Cash</option>
+        {% for key, label in payment_options %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+    </select>
+</div>
+<div id="payment-phone-wrap" class="hidden mb-2">
+    <label for="payment_phone" class="block text-sm font-medium text-gray-700">Customer phone to send the payment prompt to</label>
+    <input type="tel" id="payment_phone" name="payment_phone" form="complete-sale-form" placeholder="07xx xxx xxx" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
 </div>
 
 <div class="mt-4 flex space-x-2"> <form id="complete-sale-form" action="{{ url_for('complete_sale') }}" method="post" class="flex-grow"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-full hover:bg-blue-700 transition-colors duration-300"> Complete Sale </button> </form> <form action="{{ url_for('cancel_sale') }}" method="post" class="flex-grow"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> <button type="submit" class="w-full bg-gray-400 text-white font-semibold py-2 px-4 rounded-full hover:bg-gray-500 transition-colors duration-300"> Cancel Sale </button> </form> </div> </div>
@@ -99,6 +117,16 @@
         var barcodeInput = document.getElementById('barcode');
         if (barcodeInput) {
             barcodeInput.focus();
+        }
+
+        var methodSelect = document.getElementById('payment_method');
+        var phoneWrap = document.getElementById('payment-phone-wrap');
+        if (methodSelect && phoneWrap) {
+            var syncPhone = function () {
+                phoneWrap.classList.toggle('hidden', methodSelect.value === 'cash');
+            };
+            methodSelect.addEventListener('change', syncPhone);
+            syncPhone();
         }
 
         var toggleBtn = document.getElementById('toggle-checkout-extras');

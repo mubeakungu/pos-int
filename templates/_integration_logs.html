@@ -1,0 +1,42 @@
+<div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200">
+    <h3 class="text-xl font-bold text-gray-800 mb-4">Recent activity</h3>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">When (UTC)</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Integration</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Event</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sale</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Result</th>
+                    <th class="px-3 py-2"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for log in logs %}
+                <tr class="align-top">
+                    <td class="px-3 py-2 whitespace-nowrap text-gray-500">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td class="px-3 py-2">{{ log.integration_key }}</td>
+                    <td class="px-3 py-2">{{ log.event }}</td>
+                    <td class="px-3 py-2">{% if log.sale_id %}<a class="text-blue-600 hover:underline" href="{{ url_for('view_receipt', sale_id=log.sale_id) }}">#{{ log.sale_id }}</a>{% endif %}</td>
+                    <td class="px-3 py-2">
+                        <span class="{% if log.status == 'failed' %}text-red-600{% elif log.status == 'success' %}text-green-600{% else %}text-gray-500{% endif %} font-semibold">{{ log.status }}</span>{% if log.attempts > 1 %} <span class="text-xs text-gray-400">({{ log.attempts }} tries)</span>{% endif %}
+                        {% if log.error %}<div class="text-xs text-red-600">{{ log.error }}</div>{% endif %}
+                        <details class="text-xs text-gray-500"><summary class="cursor-pointer">details</summary>
+                            {% if log.request_json %}<p class="font-semibold mt-1">Request</p><pre class="whitespace-pre-wrap break-all bg-gray-50 p-2 rounded max-w-xl">{{ log.request_json }}</pre>{% endif %}
+                            {% if log.response_json %}<p class="font-semibold mt-1">Response</p><pre class="whitespace-pre-wrap break-all bg-gray-50 p-2 rounded max-w-xl">{{ log.response_json }}</pre>{% endif %}
+                        </details>
+                    </td>
+                    <td class="px-3 py-2 text-right">
+                        {% if log.status == 'failed' and log.payload_json %}
+                        <form method="post" action="{{ url_for('retry_integration_log', log_id=log.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="text-blue-600 hover:underline text-xs">Retry</button></form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">Nothing yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

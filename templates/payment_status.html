@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 mx-auto max-w-lg text-center">
+    <h2 class="text-2xl font-bold text-gray-800 mb-1">Sale #{{ payment.sale_id }}: waiting for payment</h2>
+    <p class="text-gray-500 mb-6">{{ config.name if config else payment.method }} &middot; {{ currency_symbol }} {{ "%.2f" | format(payment.amount) }}{% if payment.phone %} &middot; {{ payment.phone }}{% endif %}</p>
+
+    <div id="status-box" class="rounded-lg p-4 mb-6 {% if payment.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-yellow-50 text-yellow-800{% endif %}">
+        <p id="status-text" class="font-semibold">
+            {% if payment.status == 'failed' %}Payment failed{% elif payment.status == 'cancelled' %}Cancelled{% else %}Waiting for the customer to enter their M-Pesa PIN&hellip;{% endif %}
+        </p>
+        <p id="status-message" class="text-sm mt-1">{{ payment.message or '' }}</p>
+    </div>
+
+    {% if is_mock %}
+    <div class="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+        <p class="mb-2">This integration is in <strong>mock mode</strong>, so no real prompt was sent.</p>
+        <div class="flex gap-2 justify-center">
+            <form method="post" action="{{ url_for('simulate_payment', payment_id=payment.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="outcome" value="paid"><button class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold">Simulate success</button></form>
+            <form method="post" action="{{ url_for('simulate_payment', payment_id=payment.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="outcome" value="failed"><button class="bg-gray-500 text-white px-3 py-1 rounded-full text-xs font-semibold">Simulate failure</button></form>
+        </div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('retry_payment', payment_id=payment.id) }}" class="flex gap-2 mb-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="tel" name="phone" value="{{ payment.phone or '' }}" placeholder="07xx xxx xxx" class="flex-grow rounded-md border border-gray-300 p-2">
+        <button class="bg-green-600 text-white font-semibold px-4 rounded-full hover:bg-green-700">Resend prompt</button>
+    </form>
+    <div class="flex gap-2">
+        <form method="post" action="{{ url_for('pay_with_cash_instead', payment_id=payment.id) }}" class="flex-grow"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="w-full bg-blue-600 text-white font-semibold py-2 rounded-full hover:bg-blue-700">Customer paid cash</button></form>
+        <form method="post" action="{{ url_for('cancel_payment', payment_id=payment.id) }}" class="flex-grow" onsubmit="return confirm('Cancel this sale and restock the items?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="w-full bg-gray-400 text-white font-semibold py-2 rounded-full hover:bg-gray-500">Cancel sale</button></form>
+    </div>
+    <p class="text-xs text-gray-400 mt-4">Customers can also pay manually to the Till/Paybill using account number <strong>SALE{{ payment.sale_id }}</strong>.</p>
+</div>
+
+<script>
+(function () {
+    var statusUrl = "{{ url_for('payment_status_json', payment_id=payment.id) }}";
+    var box = document.getElementById('status-box');
+    var text = document.getElementById('status-text');
+    var msg = document.getElementById('status-message');
+    function poll() {
+        fetch(statusUrl, {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (d) {
+            if (d.status === 'paid') { window.location = d.receipt_url; return; }
+            if (d.status === 'failed') {
+                box.className = 'rounded-lg p-4 mb-6 bg-red-50 text-red-700';
+                text.textContent = 'Payment failed';
+            }
+            msg.textContent = d.message || '';
+            if (d.status === 'pending') { setTimeout(poll, 3000); }
+        }).catch(function () { setTimeout(poll, 5000); });
+    }
+    {% if payment.status == 'pending' %}setTimeout(poll, 3000);{% endif %}
+})();
+</script>
+{% endblock %}
