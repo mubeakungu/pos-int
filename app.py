@@ -47,6 +47,10 @@ if not app.config['SQLALCHEMY_DATABASE_URI']:
 # Handle PostgreSQL URL format and add SSL for Render
 if app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgres://"):
     app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace("postgres://", "postgresql://", 1)
+# Pin the psycopg2 driver from requirements.txt. SQLAlchemy 2.1 switched plain
+# postgresql:// URLs to psycopg 3, which isn't installed.
+if app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgresql"):
+    app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql+psycopg2://" + app.config['SQLALCHEMY_DATABASE_URI'].split("://", 1)[1]
 if app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgresql") and 'sslmode' not in app.config['SQLALCHEMY_DATABASE_URI']:
     sep = '&' if '?' in app.config['SQLALCHEMY_DATABASE_URI'] else '?'
     app.config['SQLALCHEMY_DATABASE_URI'] += f'{sep}sslmode=require'
